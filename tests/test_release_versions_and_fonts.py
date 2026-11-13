@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_display_and_package_versions_are_the_same_number():
     assert tuple(map(int, DISPLAY_VERSION.split("."))) == tuple(map(int, __version__.split(".")))
     assert tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"] == __version__
-    assert re.fullmatch(r"\d+\.\d{2}\.\d+", DISPLAY_VERSION)
+    assert re.fullmatch(r"\d+\.\d+\.\d+", DISPLAY_VERSION)
 
 
 def test_readmes_and_changelog_show_the_display_version():

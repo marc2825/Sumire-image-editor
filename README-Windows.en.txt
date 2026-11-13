@@ -1,4 +1,4 @@
-Sumīre 1.01.0 / Windows 11 x64
+Sumīre 1.1.0 / Windows 11 x64
 
 Getting started
 Extract the whole ZIP and double-click sumire.exe. Python is not needed.

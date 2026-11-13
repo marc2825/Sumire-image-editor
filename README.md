@@ -1,6 +1,6 @@
 # Sumīre — 画像の仕上げ
 
-[![version](https://img.shields.io/badge/version-1.01.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.txt)
+[![version](https://img.shields.io/badge/version-1.1.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.txt)
 
 画像の一部をモザイクやぼかしで隠したり、メタデータを確認・削除したりできる、Windows 11向けのアプリです。大量の画像の仕分けや書き出しにも使えます。画像の処理はすべてPC内で行います。
 

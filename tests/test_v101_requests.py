@@ -1,4 +1,4 @@
-"""1.01.0: label keys, moving on after labelling, restore button, jump field, memo search,
+"""1.1.0: label keys, moving on after labelling, restore button, jump field, memo search,
 key hints, overwriting size reduction, reload button, unregistering and structured confirmations."""
 import pytest
 from PIL import Image, PngImagePlugin
