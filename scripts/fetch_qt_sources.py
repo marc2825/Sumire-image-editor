@@ -6,7 +6,7 @@
 Downloads the official source archives of the versions in
 scripts/windows-build-requirements.txt from download.qt.io, checks each SHA-256
 against the value Qt publishes (pinned below), and writes
-release/distribution/Sumire-v<version>-qt-pyside6-source.zip. Offer that file
+dist/Sumire-v<version>-qt-pyside6-source.zip. Offer that file
 from the same place as the distribution ZIP (see QT_REPLACEMENT.md).
 
 It also reads the qt_attribution.json files in those archives and writes
@@ -170,7 +170,7 @@ def pack(folder: Path, output: Path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--downloads", type=Path, default=ROOT / "build" / "qt-sources")
-    parser.add_argument("--output", type=Path, default=ROOT / "release" / "distribution")
+    parser.add_argument("--output", type=Path, default=ROOT / "dist")
     parser.add_argument("--notices-only", action="store_true")
     args = parser.parse_args()
     folder = download(args.downloads)

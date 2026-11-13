@@ -102,6 +102,42 @@ def tool_button(icon_name: str, tooltip: str, handler=None, *, text: str = "", v
     return button
 
 
+def html_text(text: str) -> str:
+    """Plain text for a rich-text label: escaped, line breaks kept."""
+    from html import escape
+    return escape(text).replace("\n", "<br>")
+
+
+def fact_table(rows, notes=()) -> str:
+    """The facts of a confirmation as label · value rows, then short notes (rich text).
+
+    ``rows`` is [(label, value)]; rows with an empty value are left out.
+    """
+    from .theme import TOKENS
+    cells = "".join(f"<tr><td style='padding:3px 16px 3px 0; color:{TOKENS['text_muted']}; white-space:nowrap'>{html_text(label)}</td>"
+                    f"<td style='padding:3px 0'>{html_text(value)}</td></tr>" for label, value in rows if value)
+    text = f"<table cellspacing='0' cellpadding='0'>{cells}</table>"
+    return text + "".join(f"<p style='margin:10px 0 0 0'>{html_text(note)}</p>" for note in notes if note)
+
+
+def key_hint(text: str = "") -> QLabel:
+    """A small, faint label showing a shortcut key beside (or inside) a button."""
+    label = QLabel(text)
+    label.setObjectName("keyHint")
+    label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+    return label
+
+
+def attach_key_hint(button) -> QLabel:
+    """Show a key at the right edge inside ``button`` (which keeps its own text and icon)."""
+    hint = key_hint()
+    layout = QHBoxLayout(button)
+    layout.setContentsMargins(0, 0, 10, 0)
+    layout.addStretch(1)
+    layout.addWidget(hint)
+    return hint
+
+
 def divider() -> QFrame:
     line = QFrame()
     line.setObjectName("divider")
@@ -356,6 +392,7 @@ class ZoomField(QLineEdit):
         self.setToolTip(tr("表示倍率 · 数値を入力してEnterで変更（例：150）"))
         self.setAccessibleName(tr("表示倍率"))
         self.scale = 1.0
+        self.editingFinished.connect(self.commit)
 
     def event(self, event):
         # Typing a number (and Enter) belongs to the field, not to one-key shortcuts such as Enter = save and next.
@@ -364,7 +401,6 @@ class ZoomField(QLineEdit):
             event.accept()
             return True
         return super().event(event)
-        self.editingFinished.connect(self.commit)
 
     def show_scale(self, scale):
         self.scale = scale
@@ -646,3 +682,85 @@ def slider_with_box(slider, suffix, accessible_name):
     slider.rangeChanged.connect(lambda low, high: (box.blockSignals(True), box.setRange(low, high), box.blockSignals(False)))
     box.valueChanged.connect(slider.setValue)
     return box
+
+
+class PositionBox(QLineEdit):
+    """The number in 「4 / 111」: digits typed here never trigger the one-key shortcuts (1–3 label)."""
+
+    def event(self, event):
+        if (event.type() == QEvent.Type.ShortcutOverride and not event.modifiers()
+                & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier)):
+            event.accept()
+            return True
+        return super().event(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.undo_typing()
+            self.clearFocus()
+            return
+        super().keyPressEvent(event)
+
+    def undo_typing(self):
+        self.setText(self.property("shown") or "")
+
+
+class PositionField(QWidget):
+    """「4 / 111」 above the image: type a number and press Enter to jump to that image."""
+
+    jumpRequested = Signal(int)  # the index (0-based)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from PySide6.QtGui import QIntValidator
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self.box = PositionBox()
+        self.box.setObjectName("positionValue")
+        self.box.setValidator(QIntValidator(1, 9999999, self.box))
+        self.box.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.box.setAccessibleName(tr("表示する画像の番号"))
+        self.box.setToolTip(tr("番号を入力して Enter で、その画像へ移動"))
+        self.box.editingFinished.connect(self._jump)
+        self.total = QLabel()
+        self.total.setObjectName("muted")
+        self.message = QLabel()
+        self.message.setObjectName("muted")
+        for widget in (self.box, self.total, self.message):
+            layout.addWidget(widget)
+        self.current = -1
+        self.count = 0
+        self.show_message(tr("画像を読み込んでください"))
+
+    def set_position(self, index, count):
+        self.current, self.count = index, count
+        self.box.setProperty("shown", str(index + 1))
+        self.box.setText(str(index + 1))
+        digits = len(str(max(1, count)))
+        self.box.setFixedWidth(self.box.fontMetrics().horizontalAdvance("0" * digits) + 22)
+        self.total.setText(f"/ {count}")
+        self.box.show()
+        self.total.show()
+        self.message.hide()
+
+    def show_message(self, text):
+        self.current = -1
+        self.box.hide()
+        self.total.hide()
+        self.message.setText(text)
+        self.message.show()
+
+    def text(self):
+        return self.message.text() if self.message.isVisible() else f"{self.box.text()} {self.total.text()}"
+
+    def _jump(self):
+        try:
+            index = min(max(int(self.box.text()), 1), max(self.count, 1)) - 1
+        except ValueError:
+            self.box.undo_typing()
+            return
+        if self.current >= 0 and index != self.current:
+            self.jumpRequested.emit(index)
+        else:
+            self.box.undo_typing()

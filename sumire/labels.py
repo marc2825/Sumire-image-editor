@@ -11,7 +11,8 @@ from pathlib import Path
 from .session import APPLICATION_ID
 from .storage import record_path
 
-REVIEW_LABELS = {"rejected": tr("不採用"), "pending": tr("保留"), "accepted": tr("採用")}
+# In key order: 採用 1, 保留 2, 不採用 3.
+REVIEW_LABELS = {"accepted": tr("採用"), "pending": tr("保留"), "rejected": tr("不採用")}
 
 
 def label_key(path: Path) -> str:

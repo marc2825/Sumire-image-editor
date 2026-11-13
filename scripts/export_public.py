@@ -1,6 +1,6 @@
 """Export an allowlisted source snapshot without Git history or local user data.
 
-    python -m scripts.export_public                 # release/source/Sumire-image-editor
+    python -m scripts.export_public                 # build/source/Sumire-image-editor (a clean copy)
     python -m scripts.export_public --check         # the export still matches the source
     python -m scripts.export_public --audit         # scan the exported tree, print a report
 
@@ -160,17 +160,25 @@ def export(root, destination, *, check=False, private_terms=()):
     return report
 
 
+def published_files(destination):
+    """In a Git repository, the files Git would publish (tracked, or new and not ignored); else every file."""
+    if (destination / ".git").exists():
+        import subprocess
+        listed = subprocess.run(["git", "-C", str(destination), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                                capture_output=True, check=True).stdout.decode("utf-8").split("\0")
+        return sorted(destination / name for name in listed if name)
+    return sorted(path for path in destination.rglob("*") if path.relative_to(destination).parts[0] != ".git")
+
+
 def audit(destination, private_terms=()):
-    """Scan everything in an exported tree, including files the export did not write."""
+    """Scan an exported tree or the repository: everything that would be published."""
     destination = destination.resolve()
     files, problems = [], []
-    for path in sorted(destination.rglob("*")):
+    for path in published_files(destination):
         relative = path.relative_to(destination).as_posix()
         if path.is_symlink():
             problems.append(f"{relative}: symlink")
             continue
-        if relative == ".git" or relative.startswith(".git/"):
-            continue  # reported separately below
         if not path.is_file():
             continue
         files.append(path)
@@ -209,7 +217,7 @@ def audit(destination, private_terms=()):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--destination", type=Path, default=ROOT / "release" / "source" / PUBLIC_NAME)
+    parser.add_argument("--destination", type=Path, default=ROOT / "build" / "source" / PUBLIC_NAME)
     parser.add_argument("--check", action="store_true", help="Only verify the source, export and manifest agree")
     parser.add_argument("--audit", action="store_true", help="Scan the exported tree and print a JSON report")
     parser.add_argument("--private-term", action="append", default=[], help="Additional private text to reject (not recorded)")

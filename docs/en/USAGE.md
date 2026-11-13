@@ -7,7 +7,7 @@ Every feature in detail. To get going quickly, read the in-app help (F1) or [Get
 | Area | Contents |
 | --- | --- |
 | Top | On the left, “Sumīre” and “File”, then the tabs. On the right, the save method (“Overwrite · auto-save ▾”), help and the gear (settings) |
-| Left | List actions (export accepted, bulk removal, reset sorting, undo organising, “⋯”), the folder bar, search, the image list |
+| Left | List actions (export by label, bulk removal, reset sorting, undo organising, “⋯”), the folder bar (up, reload ⟳, new folder), search (names and notes), the image list |
 | Centre | The image. Above it: undo / redo, the save state, whether there is metadata, “Remove metadata”, “Overwrite and next →”. Below it: crop, compare, mask. To the right of the name: “Share” (NovelAI i2i, Copy image, Drag to share) and “⋯” (overwrite, save as, remove and view metadata, upscale, restore the original from before overwriting, more) |
 | Right | Editing tools, “More settings” (presets, area expansion, rotate, flip, colour), sorting |
 | Bottom | Status messages, zoom (you can type a number), Fit, 100% |
@@ -92,20 +92,22 @@ Edited areas (the mask) are kept in the records when saving and come back when t
 - **Crop**: “Crop” below the image. The frame starts around the whole image; drag the corners or edges to make it smaller and drag inside to move it. You can also type the left, top, width and height. With “Set the output size (enlarge or reduce)” on, the cropped area is scaled to the width × height given; “Keep width and height in proportion” changes one when you change the other.
 - **Rotate and flip**: the buttons in “More settings” apply at once.
 - **Colour**: “Adjust colours” in “More settings”. Brightness, contrast, saturation, hue, exposure, temperature and gamma, plus highlights, shadows, white level, black level, RGB balance and sharpness under “More adjustments”. The window has its own Undo and Redo, and double-clicking a slider resets it. Transparency and edited areas are kept.
-- **Upscale**: “Upscale” in “⋯” or the image's right-click menu. Enlarges the shown image 1.5–4×. Scales that would exceed 32,768 px per side or 24 million pixels cannot be chosen. **Hidden areas are never recovered.**
+- **Upscale**: “More → Upscale” in “⋯” or the image's right-click menu. Enlarges the shown image 1.5–4×. Scales that would exceed 32,768 px per side or 24 million pixels cannot be chosen. **Hidden areas are never recovered.**
 
 All of these change the image and the mask together, and Undo reverts them, size included. When overwriting, Sumīre asks before cropping or upscaling. After overwriting and quitting, cropped-off parts cannot be brought back.
 
 ## Sorting
 
-Label images with “Reject”, “Hold” and “Accept” at the bottom right (1, 2, 3). Press again to remove a label; Alt+0 also removes it. With several images selected, all of them are labelled.
+Label images with “Accept”, “Hold” and “Reject” at the bottom right (1, 2, 3). Press again to remove a label; Alt+0 also removes it. With several images selected, all of them are labelled.
 
 - Labels are saved at once and survive restarts, saving, renaming and moving between folders. They never change the image.
 - The filter button shows images by label. Counts appear below the list.
 - With “Next after labelling” on, Sumīre moves to the next image after each label.
 - “Reset sorting” removes every label in the tab.
 - The list's “⋯ → Reset the whole list” restores the originals of images overwritten in this session (when they were kept), clears the shown image's edits and mask, and clears labels, notes, order, filters and search. Edits saved before this session, and overwrites without a kept original, cannot be undone.
-- “Export accepted” exports the accepted images to a new folder. By default it creates an “Accept” folder in the open folder and renames the images 00, 01… in list order. The destination, names and format can be changed. Unsaved edits are included; metadata is not.
+- “Export by label” sorts the images of Accept, Hold, Reject or all labels into folders named after the labels. By default it creates those folders in the open folder, renames the images 00, 01… in list order and **moves the original files** there (labels and notes move with them; “Undo the last organising step” moves them back; save unsaved edits first).
+- With “Move the original files” off, the originals stay and the edited images are written as new files: unsaved edits are included, metadata is not, and the format can be chosen.
+- The destination and numbering can be changed.
 
 ## Organising
 

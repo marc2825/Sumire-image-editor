@@ -230,7 +230,8 @@ class LibraryFilter(QSortFilterProxyModel):
         model = self.sourceModel()
         path = model.paths[row]
         return ((self.label == "all" or model.labels.get(path, "unlabelled") == self.label)
-                and (not self.text or self.text.casefold() in path.name.casefold())
+                and (not self.text or self.text.casefold() in path.name.casefold()
+                     or self.text.casefold() in model.notes.get(path, "").casefold())
                 and (self.allowed is None or path in self.allowed))
 
     @property

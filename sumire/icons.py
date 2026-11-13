@@ -176,6 +176,13 @@ def _draw(painter: QPainter, name: str, color: QColor):
         path.cubicTo(10.5, 7.4, 8, 7.1, 8, 9.5)
         painter.drawPath(path)
         painter.drawPoint(QPointF(8, 11.7))
+    elif name == "reload":
+        # Reload: an almost closed circle, the arrow at the top pointing into the gap (⟳).
+        path = QPainterPath()
+        path.arcMoveTo(QRectF(2.5, 2.5, 11, 11), 80)
+        path.arcTo(QRectF(2.5, 2.5, 11, 11), 80, 305)
+        painter.drawPath(path)
+        _line(painter, (7.4, 0.6), (10, 2.6), (7.6, 4.8))
     elif name == "plus":
         _line(painter, (8, 3), (8, 13))
         _line(painter, (3, 8), (13, 8))

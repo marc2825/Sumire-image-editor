@@ -74,7 +74,29 @@ def configure(app):
     return translator, families
 
 
+def unregister():
+    """``sumire.exe --unregister``: remove 「Sumīreで開く」 from the right-click menu.
+
+    For uninstalling: run it (or unregister-context-menu.cmd) before deleting the folder.
+    """
+    from PySide6.QtWidgets import QMessageBox
+    from .explorer import configure_context_menu
+    app = QApplication.instance() or QApplication(sys.argv[:1])
+    i18n.set_language(choose_language())
+    configure(app)
+    title = tr("右クリックの登録を解除")
+    try:
+        configure_context_menu(remove=True)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        QMessageBox.warning(None, title, tr("解除できませんでした。\n{error}").format(error=error))
+        return 1
+    QMessageBox.information(None, title, tr("右クリックの「Sumīreで開く」を解除しました。\nこのフォルダーを削除しても、登録は残りません。"))
+    return 0
+
+
 def main():
+    if sys.argv[1:2] == ["--unregister"]:
+        return unregister()
     if sys.argv[1:2] in (["--self-test"], ["--self-test-ui"]):
         # Checks a built copy without a visible window; see selftest.py.
         from .selftest import main as self_test

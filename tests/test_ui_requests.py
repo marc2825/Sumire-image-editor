@@ -139,8 +139,10 @@ def test_undo_arrow_follows_the_organisation_history(window):
 
 def test_image_menu_and_canvas_menu_share_the_four_commands(window, monkeypatch):
     texts = [action.text().split("\t")[0] for action in window.image_menu.actions() if not action.isSeparator()]
-    assert texts[:4] == [window.manual_save.text().split("\t")[0], "別名で保存…", window.metadata_button.text(), "超解像を適用…"]
+    assert texts[:3] == [window.manual_save.text().split("\t")[0], "別名で保存…", window.metadata_button.text()]
     assert not any(text.startswith("メタデータを復元") for text in texts)
+    other = next(action.menu() for action in window.image_menu.actions() if action.menu() is not None)
+    assert other.title() == "その他" and other.actions()[0] is window.editor_actions["upscale"]  # 超解像 is one level down
     shown = []
     monkeypatch.setattr(QMenu, "popup", lambda self, *args: shown.append(self))
     window.show_canvas_menu(QPoint(10, 10))

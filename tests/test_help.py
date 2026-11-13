@@ -28,7 +28,7 @@ def test_bundled_help_loads_all_topics_without_opening_browser(help_dialog, monk
         text = help_dialog.browser.toPlainText()
         assert text.strip() and "読み込めませんでした" not in text
     assert "圧縮は暗号化ではありません" in read_help_document("METADATA.md")
-    assert not opened and not help_dialog.online_button.isEnabled()
+    assert not opened  # reading the bundled help never opens a browser
 
 
 def test_search_filters_topics_and_recovers_from_no_matches(help_dialog):
@@ -63,8 +63,15 @@ def test_enter_in_help_search_keeps_dialog_open_and_does_not_open_online(help_di
     assert help_dialog.isVisible() and not opened
 
 
+def test_help_links_to_the_public_repository():
+    assert help_module.PUBLIC_DOCUMENTATION_REPOSITORY == "https://github.com/marc2825/Sumire-image-editor"
+    assert github_document_url("USER_GUIDE.md") == \
+        "https://github.com/marc2825/Sumire-image-editor/blob/main/sumire/help_docs/USER_GUIDE.md"
+
+
 def test_unset_public_url_does_not_use_git_remote(help_dialog, monkeypatch):
-    assert help_module.PUBLIC_DOCUMENTATION_REPOSITORY == ""
+    monkeypatch.setattr(help_module, "PUBLIC_DOCUMENTATION_REPOSITORY", "")
+    help_dialog.refresh_online() if hasattr(help_dialog, "refresh_online") else None
     opened = []
     monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url) or True)
     help_dialog.open_online()

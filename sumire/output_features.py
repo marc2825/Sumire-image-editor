@@ -9,10 +9,12 @@ import tempfile
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
 
-from .convert import TARGETS, Encoding, commit, encode, format_bytes, size_summary, stage, writable
+from .backups import store as originals
+from .convert import TARGETS, Encoding, commit, encode, format_bytes, replace_original, size_summary, stage, writable
 from .editing import EditSpec
-from .export import available_target, check_cancel, detect_format
+from .export import available_target, check_cancel, detect_format, file_digest
 from .imaging import ImageProblem
+from .ui import fact_table, html_text
 
 SAVE_AS_QUALITY = {"JPEG": None, "AVIF": 80, "HEIF": 80}
 
@@ -33,7 +35,8 @@ class OutputFeatures:
             original_size = 0
         source = (sample.name, original_size, (lambda: snapshot) if snapshot is not None else (lambda: self.review_pixels(sample)))
         dialog = ConvertDialog(mode, len(paths), self.default_new_folder_parent(paths), source,
-                               backup=self.metadata_backup.isChecked(), source_format=detect_format(sample), parent=self)
+                               backup=self.metadata_backup.isChecked(), source_format=detect_format(sample),
+                               keep_originals=self.keep_originals.isChecked(), parent=self)
         if not self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted) or self.busy() or self.saving:
             return
         try:
@@ -44,18 +47,27 @@ class OutputFeatures:
             return
         paths = [path for path in paths if path in self.model.rows]
         if paths:
-            self.prepare_conversion(paths, encoding, folder, mode)
+            self.prepare_conversion(paths, encoding, folder, mode, replace=dialog.replace_originals())
 
-    def prepare_conversion(self, paths, encoding, folder, mode):
-        """Encode every image into hidden staging files, then confirm with the real sizes."""
+    def prepare_conversion(self, paths, encoding, folder, mode, replace=False):
+        """Encode every image into hidden staging files, then confirm with the real sizes.
+
+        ``replace`` (size reduction only) puts each result in place of its original
+        instead of into ``folder``; only images whose format stays the same.
+        """
         label = tr("容量削減") if mode == "compress" else tr("変換")
         try:
-            created = not folder.exists()
-            folder.mkdir(parents=True, exist_ok=True)
-            staging = Path(tempfile.mkdtemp(prefix=".sumire-staging-", dir=folder))
+            if replace:
+                created = False
+                staging = Path(tempfile.mkdtemp(prefix="sumire-staging-"))
+            else:
+                created = not folder.exists()
+                folder.mkdir(parents=True, exist_ok=True)
+                staging = Path(tempfile.mkdtemp(prefix=".sumire-staging-", dir=folder))
         except OSError:
             self.error(tr("保存先のフォルダーを作成できません。場所とアクセス権を確認してください。"))
             return
+        projects = {path for path, doc in self.documents.items() if getattr(doc, "project", False)}
         self.autosave_timer.stop()
         snapshots = {path: doc.image for path, doc in self.documents.items() if path in paths}
         self.begin_batch_progress(len(paths))
@@ -66,10 +78,19 @@ class OutputFeatures:
             for number, path in enumerate(paths, 1):
                 try:
                     check_cancel(cancel)
+                    digest = None
+                    if replace:
+                        source_format = detect_format(path)
+                        if source_format != encoding.format:
+                            raise ImageProblem(tr("形式が変わるため上書きしません（{source} → {target}）。").format(
+                                source=TARGETS.get(source_format, (source_format or "?",))[0], target=TARGETS[encoding.format][0]))
+                        if path in projects or self.is_clipboard_path(path):
+                            raise ImageProblem(tr("編集プロジェクトとクリップボードの画像は上書きしません。"))
+                        digest = file_digest(path)
                     image = snapshots[path] if path in snapshots else self.review_pixels(path)
                     raw = encode(image, encoding)
                     check_cancel(cancel)
-                    staged.append((path, stage(raw, staging), path.stat().st_size, len(raw)))
+                    staged.append((path, stage(raw, staging), path.stat().st_size, len(raw), digest))
                 except ImageProblem as error:
                     failed[path] = str(error)
                 except OSError:
@@ -95,11 +116,11 @@ class OutputFeatures:
                 if failed:
                     self.show_failures_text(failed)
                 return
-            if not self.confirm_conversion(staged, failed, encoding, folder, mode) or self.busy() or self.saving:
+            if not self.confirm_conversion(staged, failed, encoding, folder, mode, replace) or self.busy() or self.saving:
                 discard()
                 self.info(tr("{label}を取り消しました。ファイルは書き出していません。").format(label=label))
                 return
-            self.commit_conversion(staged, failed, encoding, folder, staging, mode)
+            self.commit_conversion(staged, failed, encoding, folder, staging, mode, replace)
 
         def failed(message):
             self.batch_job = None
@@ -110,52 +131,59 @@ class OutputFeatures:
         self.batch_job.signals.cancelled.connect(lambda: failed(tr("{label}を中止しました。ファイルは書き出していません。").format(label=label)))
         self.update_controls()
 
-    def confirm_conversion(self, staged, failed, encoding, folder, mode):
+    def confirm_conversion(self, staged, failed, encoding, folder, mode, replace=False):
         before = sum(item[2] for item in staged)
         after = sum(item[3] for item in staged)
         compress = mode == "compress"
         name = TARGETS[encoding.format][0]
         dialog = QMessageBox(self)
         dialog.setWindowTitle(tr("容量削減の確認") if compress else tr("形式変換の確認"))
-        dialog.setIcon(QMessageBox.Icon.Question)
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setIcon(QMessageBox.Icon.Warning if replace else QMessageBox.Icon.Question)
+        dialog.setTextFormat(Qt.TextFormat.RichText)
         prefix = tr("元画像 合計") if len(staged) > 1 else tr("元画像")
-        dialog.setText(size_summary(before, after, (tr("圧縮後") if compress else tr("変換後")) + (tr(" 合計") if len(staged) > 1 else ""), prefix))
+        dialog.setText(html_text(size_summary(before, after, (tr("圧縮後") if compress else tr("変換後")) + (tr(" 合計") if len(staged) > 1 else ""), prefix)))
         quality = tr("品質{quality}・").format(quality=encoding.quality) if encoding.quality else ""
-        lines = [tr("{count}枚を{name}（{quality}{value}）で書き出します。").format(count=len(staged), name=name, quality=quality, value=tr('非可逆') if encoding.lossy else tr('可逆')),
-                 tr("保存先：{folder}").format(folder=folder),
-                 tr("元画像は変更しません。") + (tr("書き出したファイルのメタデータは、管理記録から復元できます。") if self.metadata_backup.isChecked() else "")]
-        if encoding.max_side:
-            lines.insert(1, tr("長辺を{max_side}px以下に縮小します。").format(max_side=encoding.max_side))
-        if failed:
-            lines.append(tr("処理できなかった画像：{count}枚（詳細を参照）").format(count=len(failed)))
-        dialog.setInformativeText("\n".join(lines))
-        details = [f"{path.name}\t{size_summary(old, new, '', '')}" for path, _, old, new in staged]
+        backup = self.metadata_backup.isChecked()
+        rows = [(tr("対象"), tr("{count}枚").format(count=len(staged))),
+                (tr("形式"), tr("{name}（{quality}{value}）").format(name=name, quality=quality, value=tr('非可逆') if encoding.lossy else tr('可逆'))),
+                (tr("縮小"), tr("長辺を{max_side}px以下に").format(max_side=encoding.max_side) if encoding.max_side else ""),
+                (tr("保存先"), tr("元画像に上書き（同じ場所・名前）") if replace else str(folder)),
+                (tr("元画像"), (tr("置き換える（アプリの終了まで残し、「上書き前に戻す」で戻せる）") if self.keep_originals.isChecked()
+                                else tr("置き換える（元のファイルは残らない）")) if replace else tr("変更しない")),
+                (tr("メタデータ"), tr("含めない（復元用に管理記録へ残す）") if backup else tr("含めない")),
+                (tr("処理できない画像"), tr("{count}枚（詳細を参照）").format(count=len(failed)) if failed else "")]
+        dialog.setInformativeText(fact_table(rows, [tr("編集中の画像は、今の加工を含めて置き換えます。編集の履歴は消えます。") if replace else ""]))
+        details = [f"{path.name}\t{size_summary(old, new, '', '')}" for path, _, old, new, _ in staged]
         details += [tr("{name}\t失敗：{reason}").format(name=path.name, reason=reason) for path, reason in failed.items()]
         dialog.setDetailedText("\n".join(details))
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        dialog.button(QMessageBox.StandardButton.Ok).setText(tr("書き出す"))
+        dialog.button(QMessageBox.StandardButton.Ok).setText(tr("上書きする") if replace else tr("書き出す"))
         dialog.button(QMessageBox.StandardButton.Cancel).setText(tr("キャンセル"))
-        dialog.setDefaultButton(QMessageBox.StandardButton.Ok)
+        dialog.setDefaultButton(QMessageBox.StandardButton.Cancel if replace else QMessageBox.StandardButton.Ok)
         dialog.setEscapeButton(QMessageBox.StandardButton.Cancel)
         return self.confirm_dialog(dialog)
 
-    def commit_conversion(self, staged, failed, encoding, folder, staging, mode):
+    def commit_conversion(self, staged, failed, encoding, folder, staging, mode, replace=False):
         label = tr("容量削減") if mode == "compress" else tr("変換")
         backup = self.metadata_backup.isChecked()
+        keep_original = originals().keep if replace and self.keep_originals.isChecked() else None
         projects = {path for path, doc in self.documents.items() if getattr(doc, "project", False)}
         self.begin_batch_progress(len(staged))
 
         def work(cancel, report):
             written, problems, reserved = [], dict(failed), set()
-            for number, (path, temporary, old, new) in enumerate(staged, 1):
+            for number, (path, temporary, old, new, digest) in enumerate(staged, 1):
                 try:
                     check_cancel(cancel)
+                    keep = backup and path not in projects and not self.is_clipboard_path(path)
+                    if replace:
+                        written_digest = replace_original(temporary, path, digest, backup=keep, keep_original=keep_original, cancel=cancel)
+                        written.append((path, path, old, new, written_digest))
+                        continue
                     target = available_target(folder, path.stem, encoding.format, reserved)
                     reserved.add(target)
-                    keep = backup and path not in projects and not self.is_clipboard_path(path)
                     commit(temporary, target, source=path, backup=keep, cancel=cancel)
-                    written.append((path, target, old, new))
+                    written.append((path, target, old, new, None))
                 except ImageProblem as error:
                     problems[path] = str(error)
                 except OSError:
@@ -177,16 +205,33 @@ class OutputFeatures:
             written, problems = result
             before, after = sum(item[2] for item in written), sum(item[3] for item in written)
             text = tr("{label}しました · {count}枚 · ").format(label=label, count=len(written)) + size_summary(before, after, tr("圧縮後") if mode == "compress" else tr("変換後"))
+            if replace and self.reload_replaced({path: written_digest for path, _, _, _, written_digest in written}):
+                # The shown image reloads; report the result once it has.
+                self.after_load_message = text + (tr(" / 失敗 {count}枚").format(count=len(problems)) if problems else tr(" · 元画像に上書き"))
             if problems:
                 self.error(text + tr(" / 失敗 {count}枚").format(count=len(problems)))
                 self.show_failures_text(problems)
             else:
-                self.info(text + f" · {folder}")
+                self.info(text + (tr(" · 元画像に上書き") if replace else f" · {folder}"))
 
         self.batch_job = self.run_job(work, finish, lambda message: finish(message=message + tr(" 完了した分は書き出し済みです。")),
                                       progress=self.update_batch_progress)
         self.batch_job.signals.cancelled.connect(lambda: finish(message=tr("{label}を中止しました。完了した分は書き出し済みです。").format(label=label)))
         self.update_controls()
+
+    def reload_replaced(self, digests):
+        """Images whose files were replaced: drop their cached edits and show them anew."""
+        current = self.document.path if self.document else None
+        for path, digest in digests.items():
+            self.documents.pop(path, None)
+            self.owned[path] = digest
+            self.model.cache.pop(path, None)
+            self.model.state(path, "")
+        if current in digests:
+            self.document = None
+            self._load_index(self.model.rows[current])
+            return True
+        return False
 
     def show_failures_text(self, failures):
         self.show_text_window(tr("処理できなかった画像"), "\n\n".join(f"{path}\n{reason}" for path, reason in failures.items()))

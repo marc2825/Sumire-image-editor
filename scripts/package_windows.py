@@ -3,13 +3,13 @@
 Run on Windows with the Python environment that made the build (build_windows.ps1
 does both). The result:
 
-    dist/Sumire-v1.00.0-win64/            the folder users get
+    dist/Sumire-v1.01.0-win64/            the folder users get
         sumire.exe, _internal/            program, Python, Qt (replaceable DLLs), fonts
         README-Windows*.txt, LICENSE, THIRD_PARTY_NOTICES.md, QT_REPLACEMENT.md, ...
         licenses/                         licence texts of everything bundled
         SHA256SUMS.txt                    checksums of the files above (not of the ZIP)
-    dist/Sumire-v1.00.0-win64.zip
-    dist/Sumire-v1.00.0-win64.zip.sha256  checksum of the ZIP, kept outside it
+    dist/Sumire-v1.01.0-win64.zip
+    dist/Sumire-v1.01.0-win64.zip.sha256  checksum of the ZIP, kept outside it
 """
 from __future__ import annotations
 
@@ -41,6 +41,9 @@ REQUIRED = ("sumire.exe", "_internal/base_library.zip", "_internal/PySide6/Qt6Co
             "_internal/sumire/fonts/NotoSansJP-Regular.otf", "_internal/sumire/fonts/NotoSansJP-Bold.otf",
             "_internal/sumire/fonts/OFL.txt", "_internal/sumire/locales/en.json", "_internal/sumire/locales/zh_CN.json",
             "_internal/sumire/help_docs/FAQ.md")
+UNREGISTER_CMD = ('@echo off\r\n'
+                  'rem Removes "Open with Sumire" from the right-click menu. Run it before deleting this folder.\r\n'
+                  '"%~dp0sumire.exe" --unregister\r\n')
 # Collected by PyInstaller's Qt hooks but never used: Sumīre makes no network connections and
 # draws without OpenGL. Leaving them out keeps network code (TLS backends, TUIO input over UDP)
 # and the 20 MB software OpenGL (Mesa) out of the distribution.
@@ -168,6 +171,8 @@ def package(root=ROOT):
         for filename in DOCS:
             shutil.copyfile(root / filename, folder / filename)
         shutil.copyfile(root / "build/build-info.json", folder / "build-info.json")
+        # Double-click before deleting the folder: removes the right-click entry (README-Windows, "アンインストール").
+        (folder / "unregister-context-menu.cmd").write_bytes(UNREGISTER_CMD.encode("ascii"))
         # README.md links to the help pages; the app reads its own copy inside _internal.
         shutil.copytree(root / "sumire/help_docs", folder / "sumire/help_docs")
         shutil.copytree(root / "docs", folder / "docs")

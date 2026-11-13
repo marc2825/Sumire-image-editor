@@ -16,7 +16,7 @@ def set_key(dialog, command, key, index=0):
     dialog.editors[command][index].setKeySequence(QKeySequence(key))
 
 
-@pytest.mark.parametrize("key,label", [(Qt.Key.Key_1, "rejected"), (Qt.Key.Key_2, "pending"), (Qt.Key.Key_3, "accepted")])
+@pytest.mark.parametrize("key,label", [(Qt.Key.Key_1, "accepted"), (Qt.Key.Key_2, "pending"), (Qt.Key.Key_3, "rejected")])
 def test_default_review_keys_toggle_without_zooming(qtbot, window, key, label):
     page = window
     scale = page.canvas.scale
@@ -58,7 +58,7 @@ def test_dialog_cancel_conflict_clear_reset_and_save(qtbot, tmp_path):
     set_key(dialog, "pending", "1")
     dialog.accept()
     assert dialog.result() != QDialog.DialogCode.Accepted
-    assert "重複" in dialog.error.text() and "不採用" in dialog.error.text()
+    assert "重複" in dialog.error.text() and "「採用」" in dialog.error.text()
     assert preferences.path.read_bytes() == original
     set_key(dialog, "pending", "")
     set_key(dialog, "accepted", "Q")
@@ -172,10 +172,10 @@ def test_custom_hold_keys_compare_pan_and_release(qtbot, window):
 def test_empty_binding_disables_previous_key(qtbot, window):
     window.preferences.save({**window.preferences.data, "shortcuts": {"accepted": []}})
     window._shortcuts()
-    QTest.keyClick(window.canvas, Qt.Key.Key_3)
+    QTest.keyClick(window.canvas, Qt.Key.Key_1)
     assert not window.model.labels
     assert "未設定" in window.review_hint.text()
-    assert "3" not in window.label_buttons["accepted"].toolTip()
+    assert "1" not in window.label_buttons["accepted"].toolTip()
 
 
 def test_restart_loads_bindings_and_alternative_keys(qtbot):

@@ -33,6 +33,8 @@ Linuxでは `python3 -m venv .venv`、`.venv/bin/python -m pip install -e '.[dev
 
 画面のテストは画面を表示せずに動きます。Windowsの実際の画面で動かすときは、`QT_QPA_PLATFORM=windows` を設定してください。
 
+GitHub Actions（`.github/workflows/tests.yml`）が、push と pull request のたびに、Windows と Linux で訳の点検（`scripts.i18n_check`）と全テストを実行します。パッケージの版は `scripts/windows-build-requirements.txt` のとおりです。
+
 保存した画像にメタデータが残っていないかは、次のコマンドでも確かめられます。ExifToolが入っていれば、それでも確認します（ExifToolだけでは画素に埋め込まれた情報は見つけられないため、アプリ側でも検査します）。
 
 ```powershell
@@ -59,7 +61,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 - Linux上のPythonからWindows版は作れません。
 - コード署名、インストーラー、自動更新はありません。
 
-版の表記：画面・説明書・ZIP の名前は `1.00.0`（`sumire.DISPLAY_VERSION`）、pyproject.toml と `sumire.__version__` は PEP 440 の形の `1.0.0` です。exe のバージョン情報は、数値が 1.0.0.0、文字列が `1.00.0` です。
+版の表記：画面・説明書・ZIP の名前は `1.01.0`（`sumire.DISPLAY_VERSION`）、pyproject.toml と `sumire.__version__` は PEP 440 の形の `1.1.0` です。exe のバージョン情報は、数値が 1.1.0.0、文字列が `1.01.0` です。
 
 ### Qt・PySide6 のソースとライセンス文
 
@@ -67,14 +69,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 python -m scripts.fetch_qt_sources
 ```
 
-Qt 6.12.0（qtbase・qtsvg・qtimageformats・qttranslations）と pyside-setup 6.12.0 の公式のソースを download.qt.io から取得し、スクリプトに記載した SHA-256 と照合して `release/distribution/Sumire-v<版>-qt-pyside6-source.zip` にまとめます。あわせて、ソース内の `qt_attribution.json` から `licenses/Qt/THIRD_PARTY.md` を作り直します。
+Qt 6.12.0（qtbase・qtsvg・qtimageformats・qttranslations）と pyside-setup 6.12.0 の公式のソースを download.qt.io から取得し、スクリプトに記載した SHA-256 と照合して `dist/Sumire-v<版>-qt-pyside6-source.zip` にまとめます。あわせて、ソース内の `qt_attribution.json` から `licenses/Qt/THIRD_PARTY.md` を作り直します。
 
 ### 配布物の確認
 
 配布物の exe には、画面を表示せずに確かめる機能があります。設定・記録・一時ファイルは指定したフォルダーの中だけに作り、右クリックメニューは登録しません。
 
 ```powershell
-.\dist\Sumire-v1.00.0-win64\sumire.exe --self-test "$env:TEMP\sumire-self-test"
+.\dist\Sumire-v1.01.0-win64\sumire.exe --self-test "$env:TEMP\sumire-self-test"
 ```
 
 フォントの読み込み、PNG・JPEG・WebP・AVIF・BMP・TIFF・GIF の書き出しと読み直し、メタデータと Stealth PNGInfo の削除、Qt の訳、ヘルプ、右クリックメニューに登録するコマンド、読み込んだ Qt の DLL の場所と SHA-256、日本語・英語・簡体字中国語の画面と 125%・150% 相当（`QT_SCALE_FACTOR`）の画面を確かめ、`self-test.json` と画面の画像を書き出します。終了コードが 0 なら、すべて通っています。
@@ -82,7 +84,7 @@ Qt 6.12.0（qtbase・qtsvg・qtimageformats・qttranslations）と pyside-setup 
 実際のマウス・キーボード操作での確認には、Windowsの検証用Pythonに `Pillow pywinauto psutil pywin32` を入れて実行します。マウスとキーボードを自動で動かすため、終わるまでPCを操作しないでください。
 
 ```powershell
-python -m scripts.smoke_windows_exe dist\Sumire-v1.00.0-win64 --artifacts test-artifacts\windows-exe --shell-verbs
+python -m scripts.smoke_windows_exe dist\Sumire-v1.01.0-win64 --artifacts test-artifacts\windows-exe --shell-verbs
 ```
 
 `--artifacts` には新しいフォルダーを指定します。`--shell-verbs` を付けると、右クリックの登録と、そこからの起動も確かめます（終わったら元に戻します）。
@@ -93,15 +95,19 @@ Windows Sandboxが使えるPCでは、次のコマンドでネットワークの
 powershell -ExecutionPolicy Bypass -File .\scripts\create_windows_sandbox.ps1 -Launch
 ```
 
-### 公開用のソースを書き出す
+### 公開前の検査
 
 ```sh
-python -m scripts.export_public            # release/source/Sumire-image-editor
-python -m scripts.export_public --check
-python -m scripts.export_public --audit
+python -m scripts.export_public --audit --destination .
 ```
 
-ソース・テスト・説明書・スクリプト・フォント・ライセンス文だけを許可リストで書き出し、SHA-256を記録します（`release/source/export-report.json`）。仮想環境・配布物・管理記録・開発用の記録（AGENTS.md・RELEASE_STATUS.md・PUBLISH_CHECKLIST.md・VALIDATION.md）・画像は含めません。書き出しの前に、秘密鍵・トークン・個人のパス・メールアドレスを検査します。`--audit` は書き出し先の全ファイルを検査し、問題があれば終了コード 1 で知らせます。Git の履歴は引き継がないので、公開用のリポジトリは書き出し先で新しく作ってください。
+このリポジトリで公開される（Git が追跡する、または無視されない新しい）ファイルを検査します。秘密鍵・トークン・個人のパス・メールアドレス（`licenses/` の上流のライセンス文を除く）、開発用の記録、SQLite・ログ・画像・キャッシュがあれば、終了コード 1 で知らせます。`--private-term` で、自分のメールアドレスなど特定の文字列も検査できます（値は記録しません）。
+
+`python -m scripts.export_public --destination <フォルダー>` は、許可リストのファイルだけを Git の履歴なしで書き出します（既定は `build/source/Sumire-image-editor`）。Windows でビルドするときに、作業中のファイルを含まない写しを作るのに使えます。
+
+### アンインストールの補助
+
+`sumire.exe --unregister` は、右クリックの「Sumīreで開く」を解除して終了します。配布物の `unregister-context-menu.cmd` はこれを実行するだけのファイルです。
 
 ## 表示言語
 

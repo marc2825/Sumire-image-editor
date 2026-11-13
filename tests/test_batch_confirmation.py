@@ -66,10 +66,11 @@ def test_cancel_confirms_whole_tab_even_when_filtered(qtbot, window, monkeypatch
     assert observed["title"] == "メタデータの一括削除を確認"
     assert "3 枚" in observed["text"]
     assert "key_failed" not in observed
-    assert "選択・絞り込みにかかわらず" in observed["info"]
+    assert "一覧全体（選択・絞り込みに関係なく）" in observed["info"]
     assert "元画像に上書き" in observed["info"]
-    assert "上書き前の元画像はアプリの終了まで残り" in observed["info"]
-    assert "有効（管理記録に圧縮保存）" in observed["info"]
+    assert "アプリの終了まで残す" in observed["info"]
+    assert "復元用に残す（管理記録に圧縮して保存）" in observed["info"]
+    assert "<table" in observed["info"]  # label · value rows, not a run of sentences
     assert observed["paths"].splitlines() == [str(path) for path in paths]
     assert observed["default"] == observed["escape"] == QMessageBox.StandardButton.Cancel
     assert observed["accept_text"] == "削除して保存"
@@ -84,9 +85,9 @@ def test_separate_output_and_disabled_backup_are_shown(window):
     observed = reply_to_confirmation()
     window.start_batch()
     assert "別フォルダーへ保存" in observed["info"]
-    assert f"保存先：{window.output_folder}" in observed["info"]
-    assert f"保存形式：{window.format_combo.currentText()}" in observed["info"]
-    assert "無効（新たな退避はしません）" in observed["info"]
+    assert str(window.output_folder) in observed["info"]
+    assert window.format_combo.currentText() in observed["info"]
+    assert ">残さない<" in observed["info"]
     assert "元画像に上書き" not in observed["info"]
     assert all(path.read_bytes() == content for path, content in original.items())
     assert not list(window.output_folder.glob("*.png"))

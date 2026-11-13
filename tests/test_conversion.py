@@ -11,7 +11,7 @@ from sumire.export import file_digest
 from sumire.imaging import ImageProblem, load_image
 from sumire.metadata import MetadataStore, unpack_backup
 from sumire.organize import sequence_stems
-from sumire.output_dialogs import AcceptedExportDialog, CollageDialog, ConvertDialog
+from sumire.output_dialogs import CollageDialog, ConvertDialog, LabelExportDialog
 
 from test_gui import window
 from test_editor_gui import settled
@@ -148,27 +148,61 @@ def test_compress_dialog_separates_lossless_and_lossy_and_estimates(qtbot, patte
     dialog.reject()
 
 
-def test_accepted_export_defaults_to_a_new_numbered_folder(qtbot, window, monkeypatch):
+def test_label_export_moves_into_a_numbered_label_folder_by_default(qtbot, window, monkeypatch):
     page = window
     paths = list(page.model.paths)
+    labels = {path.name: path.read_bytes() for path in paths}
     page.write_labels({paths[0]: "accepted", paths[2]: "accepted"}, {paths[0]: None, paths[2]: None})
-    assert page.export_accepted_button.isEnabled()
+    assert page.export_accepted_button.isEnabled() and page.export_accepted_button.text() == "ラベルごとに書き出す…"
     seen = []
     monkeypatch.setattr(type(page), "confirm_dialog", confirm_with(seen))
     page.export_accepted_button.click()
-    qtbot.waitUntil(lambda: page.batch_job is None and "一括処理完了" in page.status.text(), timeout=20000)
+    qtbot.waitUntil(lambda: not page.finalizing and "ラベルごとに移動しました" in page.status.text(), timeout=20000)
     folder = paths[0].parent / "採用"
-    assert seen == ["AcceptedExportDialog"]
+    assert seen == ["LabelExportDialog"]
     assert sorted(path.name for path in folder.iterdir() if not path.name.startswith(".")) == ["00.png", "01.png"]
-    assert all(path.exists() for path in paths)
+    assert not paths[0].exists() and not paths[2].exists() and paths[1].exists()
+    assert (folder / "00.png").read_bytes() == labels[paths[0].name]  # moved as they were
+    assert paths[0] not in page.model.rows and paths[1] in page.model.rows
+    qtbot.waitUntil(lambda: not page.busy() and not page.saving, timeout=10000)
+    page.undo_organization()
+    qtbot.waitUntil(lambda: paths[0].exists() and paths[2].exists(), timeout=10000)
 
 
-def test_accepted_export_dialog_options(qtbot, tmp_path):
-    paths = [tmp_path / f"{name}.png" for name in "abc"]
-    dialog = AcceptedExportDialog(paths, tmp_path)
+def test_label_export_of_every_label_copies_into_a_folder_per_label(qtbot, window, monkeypatch):
+    page = window
+    paths = list(page.model.paths)
+    page.write_labels({paths[0]: "accepted", paths[1]: "pending", paths[2]: "rejected"}, dict.fromkeys(paths[:3]))
+
+    def choose(self, dialog, accepted=None):
+        dialog.label_combo.setCurrentIndex(dialog.label_combo.findData("all"))
+        dialog.move.setChecked(False)
+        return True
+    monkeypatch.setattr(type(page), "confirm_dialog", choose)
+    page.export_labels()
+    qtbot.waitUntil(lambda: page.batch_job is None and "一括処理完了" in page.status.text(), timeout=20000)
+    for folder, source in (("採用", paths[0]), ("保留", paths[1]), ("不採用", paths[2])):
+        written = [path for path in (source.parent / folder).iterdir() if not path.name.startswith(".")]
+        assert [path.name for path in written] == ["00.png"], folder
+        with Image.open(written[0]) as image:
+            assert not image.info
+    assert all(path.exists() for path in paths)  # copying leaves the originals
+
+
+def test_label_export_dialog_options(qtbot, tmp_path):
+    dialog = LabelExportDialog({"accepted": 3, "pending": 0, "rejected": 2}, tmp_path)
     qtbot.addWidget(dialog)
-    assert dialog.renumber.isChecked() and "00, 01 … 02" in dialog.names.text()
-    assert dialog.destination() == (tmp_path / "採用").resolve() and dialog.format() == "SOURCE"
+    assert dialog.label() == "accepted" and dialog.moving() and not dialog.format_combo.isEnabled()
+    assert dialog.renumber.isChecked() and "00, 01 … 02" in dialog.names.text() and dialog.ok.text() == "3枚を移動する"
+    assert dialog.destinations() == {"accepted": (tmp_path / "採用").resolve()}
+    pending = dialog.label_combo.findData("pending")
+    assert not dialog.label_combo.model().item(pending).isEnabled()
+    dialog.label_combo.setCurrentIndex(dialog.label_combo.findData("rejected"))
+    assert dialog.chooser.name.text() == "不採用" and dialog.ok.text() == "2枚を移動する"
+    dialog.label_combo.setCurrentIndex(dialog.label_combo.findData("all"))
+    assert dialog.destinations() == {"accepted": tmp_path.resolve() / "採用", "rejected": tmp_path.resolve() / "不採用"}
+    dialog.move.setChecked(False)
+    assert dialog.format_combo.isEnabled() and dialog.format() == "SOURCE" and dialog.ok.text() == "5枚を書き出す"
     dialog.renumber.setChecked(False)
     assert "元の名前のまま" in dialog.names.text()
     dialog.chooser.elsewhere.setChecked(True)

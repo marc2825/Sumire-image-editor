@@ -175,7 +175,8 @@ def test_overwrite_mode_asks_before_changing_the_original_size(qtbot, window, mo
 def test_image_menu_offers_upscale_without_export(window):
     assert not hasattr(window, "upscale_button")
     menu_actions = window.image_menu.actions()
-    assert window.editor_actions["upscale"] in menu_actions
+    other = next(action.menu() for action in menu_actions if action.menu() is not None)
+    assert window.editor_actions["upscale"] in other.actions() and window.editor_actions["upscale"] not in menu_actions
     assert not any("書き出す" in action.text() for action in menu_actions)
     for key in ("export", "export_selected", "export_all", "upscale_selected", "upscale_all"):
         assert key not in window.editor_actions

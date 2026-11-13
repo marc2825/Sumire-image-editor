@@ -691,7 +691,8 @@ def test_review_labels_persist_through_save_sort_rename_and_reopen(qtbot, window
     window.overwrite.setChecked(overwrite)
     source = window.document.path
     before = source.read_bytes()
-    for label, text in REVIEW_LABELS.items():
+    for label in ("rejected", "pending", "accepted"):  # ends on 採用
+        text = REVIEW_LABELS[label]
         QTest.mouseClick(window.label_buttons[label], Qt.MouseButton.LeftButton)
         assert window.model.labels[source] == label
         assert text in window.model.data(window.model.index(window.index))
@@ -882,12 +883,13 @@ def test_accepted_export_uses_unsaved_edits_without_replacing_sources(qtbot, win
     destination = tmp_path / "accepted-output"
     destination.mkdir()
     def choose(self, dialog, accepted=None):
+        dialog.move.setChecked(False)  # copy: the edited image, without metadata
         dialog.chooser.chosen = destination
         dialog.chooser.elsewhere.setChecked(True)
         dialog.renumber.setChecked(False)
         return True
     monkeypatch.setattr(type(window), "confirm_dialog", choose)
-    window.export_accepted()
+    window.export_labels()
     qtbot.waitUntil(lambda: window.batch_job is None and window.canvas.ready, timeout=10000)
     assert list(destination.glob("*.png")) == [destination / source.name]
     with Image.open(destination / source.name) as image:
@@ -1122,12 +1124,13 @@ def test_accepted_export_reuses_saved_edits_after_cache_eviction(qtbot, window, 
     destination = tmp_path / "accepted-cached"
     destination.mkdir()
     def choose(self, dialog, accepted=None):
+        dialog.move.setChecked(False)
         dialog.chooser.chosen = destination
         dialog.chooser.elsewhere.setChecked(True)
         dialog.renumber.setChecked(False)
         return True
     monkeypatch.setattr(type(window), "confirm_dialog", choose)
-    window.export_accepted()
+    window.export_labels()
     qtbot.waitUntil(lambda: window.batch_job is None and window.canvas.ready, timeout=10000)
     with Image.open(destination / first.name) as output:
         assert output.tobytes() == expected

@@ -2,8 +2,8 @@
 
 Every output is encoded in memory, decoded again and checked before it is
 written: the format, size, single frame, absence of inherited metadata and,
-for the encodings presented as lossless, identical pixels. Originals are never
-modified. When enabled, the source's metadata is stored in the record database
+for the encodings presented as lossless, identical pixels. Originals are only
+replaced by an explicit size reduction "元画像に上書き" (same format). When enabled, the source's metadata is stored in the record database
 under the new file, so "メタデータを復元して別名保存" works on the converted copy.
 """
 from __future__ import annotations
@@ -222,6 +222,40 @@ def commit(staged: Path, target: Path, *, source: Path | None = None, source_dig
             os.link(staged, target)
         except FileExistsError:
             raise ImageProblem(tr("同名のファイルが先に作成されたため、この画像を中止しました。")) from None
+        staged.unlink(missing_ok=True)
+        return digest
+
+
+def replace_original(staged: Path, path: Path, expected_digest: bytes, *, backup: bool = False, keep_original=None,
+                     cancel=None) -> bytes:
+    """Put a staged file (same format) in place of ``path``; returns the new digest.
+
+    Nothing is replaced when ``path`` changed since it was read. ``keep_original``
+    (the run's original backups) is called with ``path`` first, and with ``backup``
+    the source's metadata is kept for restoring, keyed to the new file.
+    """
+    from .export import file_digest
+    from .locking import image_locks
+    with image_locks([path]):
+        check_cancel(cancel)
+        if not path.is_file() or file_digest(path) != expected_digest:
+            raise ImageProblem(tr("処理中に元画像が変更されたため、上書きしませんでした。"))
+        data = staged.read_bytes()
+        digest = hashlib.sha256(data).digest()
+        if backup:
+            store_source_metadata(path, path, digest, expected_digest, cancel=cancel)
+        if keep_original is not None:
+            keep_original(path)
+        descriptor, name = tempfile.mkstemp(prefix=".sumire-", suffix=".tmp", dir=path.parent)
+        temporary = Path(name)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
         staged.unlink(missing_ok=True)
         return digest
 

@@ -14,7 +14,7 @@ How saving works, how metadata is removed and restored, how records are handled,
 - Images in a separate folder are updated automatically only if Sumīre wrote them and they have not changed since.
 - With “Keep the original temporarily before overwriting” (on by default), the original from just before the first overwrite after starting is copied to `sumire-backup-*` in the system's temporary folder. “⋯ → Restore the original from before overwriting” checks it and puts it back. It is deleted when the app closes; copies left by a crash are deleted at a later start after 7 days.
 - Crop, resize and upscale follow the normal save method. When overwriting, Sumīre asks before applying them. After overwriting and quitting, cropped-off parts cannot be brought back.
-- Save as, Convert format, Reduce file size, Make a collage and Export accepted only create new files; they change neither the originals nor the image being edited.
+- Save as, Convert format, Reduce file size, Make a collage and Export by label (copying) only create new files; they change neither the originals nor the image being edited. The exceptions are “Overwrite the originals” in Reduce file size (replaces images whose format stays the same) and “Move the original files” in Export by label (moves the files as they are).
 
 JPEG is saved at quality 95 (changeable, 1–100) without chroma subsampling, with transparent areas made white. JPEG is recompressed on every save, so even unedited areas change slightly.
 

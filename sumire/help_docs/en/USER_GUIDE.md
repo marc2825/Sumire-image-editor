@@ -15,7 +15,7 @@ Use “Open folder” or “Open images” on the start page, or drag and drop. 
 At the first start, choose “Overwrite the original” or “Save to a separate folder and keep the original”. You can change it any time with “Overwrite · auto-save ▾” at the top right. If you close the window without choosing, it is set to overwrite with auto-save. Sumīre asks before the first overwrite.
 
 - Keep originals: turn off “Overwrite the original”.
-- Be able to undo an overwrite: turn on “Keep the original temporarily before overwriting” (on by default). “⋯ → Restore the original from before overwriting” brings back the original from before the first overwrite in this session. **Kept originals are deleted when the app closes.**
+- Be able to undo an overwrite: turn on “Keep the original temporarily before overwriting” (on by default). “Restore original” above the image (or “⋯ → Restore the original from before overwriting”) brings back the original from before the first overwrite in this session. **Kept originals are deleted when the app closes.**
 - Save by hand: turn off “Auto-save” and save with Ctrl+S.
 - Remove metadata on every save: turn on “Remove metadata when saving” (off by default, so metadata is kept).
 - Be able to restore removed metadata: turn on “Keep removed metadata for restoring” (on by default).
@@ -52,16 +52,17 @@ To remove it on every save, turn on “Remove metadata when saving”. See also 
 
 ## 6. Sort
 
-Label images with “Reject”, “Hold” and “Accept” at the bottom right (keys 1, 2, 3). Labels never delete images. Select several with Ctrl or Shift to label them together.
+Label images with “Accept”, “Hold” and “Reject” at the bottom right (keys 1, 2, 3). Labelling moves on to the next image (turn this off with “Next after labelling”). Labels never delete images. Select several with Ctrl or Shift to label them together.
 
-- Collect the accepted images: “Export accepted” above the list. It creates an “Accept” folder in the open folder and writes the images renumbered 00, 01…. The destination and numbering can be changed.
+- Sort into label folders: “Export by label” above the list. Choose Accept, Hold, Reject or all labels; it creates a folder named after each label in the open folder and moves the images there, renumbered 00, 01…. Turn off “Move the original files” to leave the originals and write the edited images without metadata instead. The destination and numbering can be changed.
 - Remove all labels: “Reset sorting” above the list.
 - Undo the last organising step: the arrow above the list (Ctrl+Alt+Z). Undoes labels, order, names, notes and folder moves.
 - Reorder: drag images in the list. The order can be changed with the button to the right of the search box.
 - Rename: double-click the image name, or F2. Enter confirms, Esc cancels.
 - Numbering: the list's “⋯ → Renumber in order”, or right-click. Numbers follow the list order, with one more digit than the largest number (00–02 for three images).
 - Remove duplicates: the list's “⋯ → Remove duplicates”. Of identical images, all but the one you keep go to the Recycle Bin.
-- Remove from the list: right-click → “Remove from list”. The file is not deleted; Ctrl+R brings it back.
+- Remove from the list: right-click → “Remove from list”. The file is not deleted; Ctrl+R (or ⟳ in the folder row) brings it back.
+- Find: type part of a file name or note in the search box. Change the number in “4 / 111” above the image and press Enter to go to that image.
 
 ## Moving between folders
 
@@ -97,10 +98,10 @@ All of these can be undone. When overwriting, Sumīre asks before cropping.
 - Save as: saves a new file with the name and format you choose.
 - Remove metadata and save: removes the metadata and saves with the current save method.
 - View metadata: shows what the image contains, by type.
-- Upscale: enlarges the shown image 1.5–4×. Hidden areas are never recovered.
+- More → Upscale: enlarges the shown image 1.5–4×. Hidden areas are never recovered.
 - Restore the original from before overwriting: returns to the state before the first overwrite in this session.
 
-Converting and reducing file size are in the right-click menu (for the whole list, the list's “⋯”). The originals stay; new files go into a new folder. Before writing, the size change is shown, for example “Original 3.2 MB → Compressed 740 KB (77% smaller)”.
+Converting and reducing file size are in the right-click menu (for the whole list, the list's “⋯”). The originals stay; new files go into a new folder. Before writing, the size change is shown, for example “Original 3.2 MB → Compressed 740 KB (77% smaller)”. With “Overwrite the originals” in Reduce file size, images whose format stays the same are replaced by the smaller files (the originals are kept until the app closes, as with overwrite saving).
 
 With two or more images selected, the right-click menu offers “Compare side by side” (up to 6) and “Make a collage”. A collage can be a grid or a free layout; double-click an image to crop it in place.
 

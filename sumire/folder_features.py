@@ -13,6 +13,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QInputDialog, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 
+from .export import Cancelled, check_cancel
 from .folders import create_folder, move_image, move_images, subfolders
 from .icons import icon
 from .imaging import ImageProblem
@@ -92,6 +93,9 @@ class FolderFeatures:
         self.folder_path_label = ElidedLabel("", Qt.TextElideMode.ElideLeft)
         self.folder_path_label.setObjectName("muted")
         row.addWidget(self.folder_path_label, 1)
+        self.reload_folder_button = tool_button("reload", tr("フォルダーを再読み込み · Ctrl+R"), lambda: self.reload_action.trigger())
+        self.reload_folder_button.setAccessibleName(tr("フォルダーを再読み込み"))
+        row.addWidget(self.reload_folder_button)
         self.new_folder_button = tool_button("folder_plus", tr("新しいフォルダーを作る"), self.create_subfolder)
         row.addWidget(self.new_folder_button)
         column.addLayout(row)
@@ -161,6 +165,7 @@ class FolderFeatures:
             return
         for widget in (self.folder_list, self.new_folder_button):
             widget.setEnabled(idle)
+        self.reload_folder_button.setEnabled(idle and bool(self.workspace_inputs))
         current = self.browsed_folder()
         self.folder_up_button.setEnabled(idle and current is not None and current != self.folder_root)
 
@@ -267,6 +272,89 @@ class FolderFeatures:
             self.error(message)
 
         self.run_job(lambda cancel: move_images(paths, folder, cancel=cancel), done, fail)
+
+    def move_labelled(self, groups, destinations, names=None):
+        """Move each label's images ({label: [path]}) into its folder ({label: folder}), as they are.
+
+        ``names`` maps a path to a new file stem. Records (labels, notes…) move with the
+        files, and 「直前の整理操作を戻す」 brings them back.
+        """
+        paths = [path for label_paths in groups.values() for path in label_paths]
+        current = self.document.path if self.document else None
+        unsaved = [path for path in paths if path in self.documents and self.documents[path].dirty and path != current]
+        if unsaved:
+            self.error(tr("未保存の編集がある画像は移動できません。保存してから移動してください。"))
+            return
+        action = lambda: self._move_labelled(groups, destinations, names)
+        if current in paths and self.document.dirty:
+            self.guard(action)
+        else:
+            action()
+
+    def _move_labelled(self, groups, destinations, names):
+        if self.busy() or self.saving:
+            return
+        groups = {label: [path for path in paths if path in self.model.rows] for label, paths in groups.items()}
+        self.autosave_timer.stop()
+        self.finalizing = True
+        self.update_controls()
+        self.info(tr("ラベルごとに移動中…"))
+
+        def work(cancel):
+            moved, failed, counts = {}, {}, {}
+            for label, paths in groups.items():
+                folder = destinations[label]
+                try:
+                    folder.mkdir(parents=True, exist_ok=True)
+                except OSError:
+                    failed.update({path: tr("移動先のフォルダーを作れません。場所とアクセス権を確認してください。") for path in paths})
+                    continue
+                reserved = set()
+                for path in paths:
+                    try:
+                        check_cancel(cancel)
+                    except Cancelled:
+                        return moved, failed, counts
+                    try:
+                        name = names[path] + path.suffix if names and path in names else None
+                        target = move_image(path, folder, name=name, reserved=frozenset(reserved), cancel=cancel)
+                        reserved.add(target)
+                        moved[path] = target
+                        counts[label] = counts.get(label, 0) + 1
+                    except Cancelled:
+                        return moved, failed, counts
+                    except ImageProblem as error:
+                        failed[path] = str(error)
+                    except OSError:
+                        failed[path] = tr("画像を移動できません。アクセス権と、ほかのアプリで開いていないかを確認してください。")
+            return moved, failed, counts
+
+        def done(result):
+            from .labels import REVIEW_LABELS
+            self.finalizing = False
+            moved, failed, counts = result
+            if moved:
+                self.exclude_from_list(list(moved), message=False)
+                self.excluded_paths.difference_update(moved)
+                self.operation_history.append(("move", {new: old for old, new in moved.items()}))
+            self.refresh_folders()
+            self.update_controls()
+            key = self.shortcut_hint("undo_organize")
+            summary = " · ".join(tr("{text} {count}枚").format(text=text, count=counts[label]) for label, text in REVIEW_LABELS.items() if counts.get(label))
+            text = tr("ラベルごとに移動しました · {summary}").format(summary=summary or "0") + (tr("（{key}で戻せます）").format(key=key) if moved and key else "")
+            if failed:
+                self.error(text + tr(" / 移動できなかった画像 {count}枚").format(count=len(failed)))
+                self.show_text_window(tr("移動できなかった画像"), "\n\n".join(f"{path}\n{reason}" for path, reason in failed.items()))
+            else:
+                self.info(text)
+
+        def fail(message):
+            self.finalizing = False
+            self.refresh_folders()
+            self.update_controls()
+            self.error(message)
+
+        self.run_job(work, done, fail)
 
     def undo_move(self, mapping):
         """Move images back to where they were ({moved: original}); returns True when all came back."""

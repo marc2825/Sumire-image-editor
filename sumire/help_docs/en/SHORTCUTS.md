@@ -15,8 +15,8 @@ Keys that act on the image work when the image area is selected. While you type 
 | New tab / close tab | Ctrl+T / Ctrl+W |
 | Next / previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
 | Rename | F2, or double-click the image name |
-| Search by name | Ctrl+F |
-| Reject / Hold / Accept | 1 / 2 / 3 |
+| Search names and notes | Ctrl+F |
+| Accept / Hold / Reject | 1 / 2 / 3 |
 | Remove label | Alt+0 |
 | Undo the last organising step | Ctrl+Alt+Z |
 | Toggle the eraser | E |

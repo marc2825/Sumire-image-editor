@@ -26,7 +26,7 @@ from .monitor import FolderMonitor
 from .organize import sequence_stems
 from .preferences import Preferences
 from .theme import TOKENS
-from .ui import Popover, SegmentComboBox, repolish, section_label, tool_button
+from .ui import Popover, SegmentComboBox, fact_table, html_text, repolish, section_label, tool_button
 
 MAX_COMPARE = 6
 
@@ -99,10 +99,10 @@ class Workbench:
         self.library_actions.setVerticalSpacing(6)
         self.library_actions_wide = None
         self.export_accepted_button = QToolButton()
-        self.export_accepted_button.setText(tr("採用を書き出す…"))
+        self.export_accepted_button.setText(tr("ラベルごとに書き出す…"))
         self.export_accepted_button.clicked.connect(lambda *_args: self.workflow_actions["export_accepted"].trigger())
-        self.export_accepted_button.setToolTip(tr("「採用」の画像だけを別フォルダーへ書き出します。実行前に保存先と名前を確認します。"))
-        self.export_accepted_button.setAccessibleName(tr("採用の画像だけを別フォルダーへ書き出す"))
+        self.export_accepted_button.setToolTip(tr("採用・保留・不採用の画像を、ラベルごとのフォルダーへ移動・書き出しします。実行前に確認します。"))
+        self.export_accepted_button.setAccessibleName(tr("ラベルごとに画像を書き出す"))
         self.batch_delete_button = QToolButton()
         self.batch_delete_button.setText(tr("メタデータ一括削除"))
         self.batch_delete_button.clicked.connect(self.batch_button.trigger)
@@ -116,6 +116,7 @@ class Workbench:
         self.export_accepted_button.setObjectName("acceptedExport")
         for button in self.library_action_buttons():
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setProperty("variant", "listAction")  # less side padding: two fit side by side
             button.setMinimumWidth(button.sizeHint().width())
         layout.addLayout(self.library_actions)
         self.arrange_library_actions(True)
@@ -124,12 +125,12 @@ class Workbench:
         search_row = QHBoxLayout()
         search_row.setSpacing(6)
         self.search = QLineEdit()
-        self.search.setPlaceholderText(tr("名前で検索"))
+        self.search.setPlaceholderText(tr("名前・メモで検索"))
         self.search.setClearButtonEnabled(True)
         self.search.addAction(icon("search", "text_muted"), QLineEdit.ActionPosition.LeadingPosition)
         self.search.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        self.search.setToolTip(tr("ファイル名の一部で絞り込みます · Ctrl+F"))
-        self.search.setAccessibleName(tr("画像を名前で検索"))
+        self.search.setToolTip(tr("ファイル名かメモの一部で絞り込みます · Ctrl+F"))
+        self.search.setAccessibleName(tr("画像を名前・メモで検索"))
         self.search.textChanged.connect(lambda _text: self.search_timer.start())
         search_row.addWidget(self.search, 1)
         self.filter_button = tool_button("filter", tr("並び順・ラベルの絞り込み・一覧 / グリッド"), self.show_filter_popover)
@@ -263,7 +264,7 @@ class Workbench:
         self.library_menu.setToolTipsVisible(True)
         self.workflow_actions = {}
         actions = [
-            ("export_accepted", tr("採用画像を書き出す…"), self.export_accepted),
+            ("export_accepted", tr("ラベルごとに書き出す…"), self.export_labels),
             ("save_as", tr("別名で保存…"), self.save_as),
             ("save_selected", tr("メタデータを削除して保存"), self.save_selected),
             ("remove_selected", tr("一覧から外す"), self.remove_selected),
@@ -463,9 +464,8 @@ class Workbench:
         labelled = ready and any(self.model.labels.get(path) for path in self.model.paths)
         self.workflow_actions["reset_labels"].setEnabled(labelled)
         self.reset_labels_button.setEnabled(labelled)
-        accepted = ready and any(label == "accepted" for label in self.model.labels.values())
-        self.workflow_actions["export_accepted"].setEnabled(accepted)
-        self.export_accepted_button.setEnabled(accepted)
+        self.workflow_actions["export_accepted"].setEnabled(labelled)
+        self.export_accepted_button.setEnabled(labelled)
         for key in ("duplicates", "compare", "convert_all", "compress_all"):
             self.workflow_actions[key].setEnabled(ready)
         for key in ("save_selected", "number_selected", "remove_selected", "convert_selected", "compress_selected"):
@@ -515,7 +515,8 @@ class Workbench:
             self.index = -1
             self.list.clearSelection()
             self.canvas.set_document(None)
-            self.position_label.setText(tr("該当する画像はありません"))
+            self.position_label.show_message(tr("該当する画像はありません"))
+            self.image_size_label.clear()
             self.update_controls()
 
     def update_library_view(self):
@@ -645,15 +646,14 @@ class Workbench:
         dialog = QMessageBox(self)
         dialog.setWindowTitle(tr("一覧を初期状態に戻す"))
         dialog.setIcon(QMessageBox.Icon.Warning)
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
-        dialog.setText(tr("このタブの画像 {count} 枚を初期状態に戻しますか？\n（元画像に戻したファイルは「元に戻す」で取り消せません。）").format(count=len(paths)))
-        lines = [tr("・上書き前の元画像に戻す：{count}枚（この起動中に残した元画像）").format(count=len(restorable))]
-        if current_edits:
-            lines.append(tr("・表示中の画像の加工とマスクを消す"))
-        lines.append(tr("・ラベルを外す：{count}枚、並び順を名前順に、絞り込みと検索を解除").format(count=len(labelled)))
-        if noted:
-            lines.append(tr("・メモを消す：{count}枚").format(count=len(noted)))
-        dialog.setInformativeText("\n".join(lines))
+        dialog.setTextFormat(Qt.TextFormat.RichText)
+        dialog.setText(html_text(tr("このタブの画像 {count} 枚を初期状態に戻しますか？").format(count=len(paths))))
+        rows = [(tr("元画像に戻す"), tr("{count}枚（この起動中に残した元画像）").format(count=len(restorable))),
+                (tr("表示中の画像"), tr("加工とマスクを消す") if current_edits else ""),
+                (tr("ラベル"), tr("{count}枚から外す").format(count=len(labelled))),
+                (tr("メモ"), tr("{count}枚から消す").format(count=len(noted)) if noted else ""),
+                (tr("一覧"), tr("名前順に並べ、絞り込みと検索を解除"))]
+        dialog.setInformativeText(fact_table(rows, [tr("元画像に戻したファイルは「元に戻す」で取り消せません。")]))
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         dialog.button(QMessageBox.StandardButton.Ok).setText(tr("初期状態に戻す"))
         dialog.button(QMessageBox.StandardButton.Cancel).setText(tr("キャンセル"))
@@ -730,14 +730,15 @@ class Workbench:
         dialog = QMessageBox(self)
         dialog.setWindowTitle(tr("仕分けのリセットを確認"))
         dialog.setIcon(QMessageBox.Icon.Question)
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
-        dialog.setText(tr("このタブの画像 {count} 枚の仕分けを解除しますか？").format(count=len(labelled)))
+        dialog.setTextFormat(Qt.TextFormat.RichText)
+        dialog.setText(html_text(tr("このタブの画像 {count} 枚の仕分けを解除しますか？").format(count=len(labelled))))
         key = self.shortcut_hint("undo_organize")
-        dialog.setInformativeText(
-            " · ".join(tr("{text} {counts} 枚").format(text=text, counts=counts[label]) for label, text in REVIEW_LABELS.items() if counts[label])
-            + tr(" を「未判定」に戻します。\n\n選択・絞り込みにかかわらず、このタブの一覧全体が対象です。")
-            + tr("画像・メモ・保存記録は変わりません。\n\n直後なら「直前の整理操作を戻す」")
-            + (tr("（{key}）").format(key=key) if key else "") + tr("で元に戻せます。"))
+        rows = [(tr("未判定に戻す"), " · ".join(tr("{text} {counts} 枚").format(text=text, counts=counts[label])
+                                              for label, text in REVIEW_LABELS.items() if counts[label])),
+                (tr("対象"), tr("このタブの一覧全体（選択・絞り込みに関係なく）")),
+                (tr("変わらないもの"), tr("画像・メモ・保存記録")),
+                (tr("取り消し"), tr("直後なら「直前の整理操作を戻す」") + (tr("（{key}）").format(key=key) if key else ""))]
+        dialog.setInformativeText(fact_table(rows))
         dialog.setDetailedText("\n".join(f"{REVIEW_LABELS[label]}\t{path}" for path, label in labelled.items()))
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         dialog.button(QMessageBox.StandardButton.Ok).setText(tr("リセット"))
@@ -842,27 +843,40 @@ class Workbench:
                 self.error(tr("メモを元に戻せませんでした。"))
         self.update_controls()
 
-    def export_accepted(self):
+    def export_labels(self):
+        """Move (default) or copy the images of a label, or of each label, into label folders."""
         if self.busy() or self.saving:
             return
-        paths = [path for path in self.model.paths if self.model.labels.get(path) == "accepted"]
-        if not paths:
-            self.info(tr("「採用」の画像がありません。"))
+        counts = Counter(self.model.labels.get(path) for path in self.model.paths)
+        counts = {label: counts[label] for label in REVIEW_LABELS}
+        labelled = [path for path in self.model.paths if self.model.labels.get(path) in REVIEW_LABELS]
+        if not labelled:
+            self.info(tr("ラベルを付けた画像がありません。"))
             return
-        from .output_dialogs import AcceptedExportDialog
-        dialog = AcceptedExportDialog(paths, self.default_new_folder_parent(paths), self.format_combo.currentData(), self)
+        from .output_dialogs import LabelExportDialog
+        dialog = LabelExportDialog(counts, self.default_new_folder_parent(labelled), self.format_combo.currentData(), self)
         if not self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted) or self.busy() or self.saving:
             return
         try:
-            folder = dialog.destination()
+            destinations = dialog.destinations()
         except ImageProblem as error:
             self.error(str(error))
             return
-        paths = [path for path in paths if path in self.model.rows]
-        names = dict(zip(paths, sequence_stems(len(paths)))) if dialog.renumber.isChecked() else None
-        if paths:
+        groups = {label: [path for path in self.model.paths if self.model.labels.get(path) == label and path in self.model.rows]
+                  for label in destinations}
+        groups = {label: paths for label, paths in groups.items() if paths}
+        names = {}
+        if dialog.renumber.isChecked():
+            for paths in groups.values():
+                names.update(zip(paths, sequence_stems(len(paths))))
+        if not groups:
+            return
+        if dialog.moving():
+            self.move_labelled(groups, destinations, names or None)
+        else:
             # Exports include unsaved edits; nothing needs saving first.
-            self._start_batch(paths=paths, export_folder=folder, names=names, format=dialog.format())
+            folders = {path: destinations[label] for label, paths in groups.items() for path in paths}
+            self._start_batch(paths=list(folders), export_folder=folders, names=names or None, format=dialog.format())
 
     def default_new_folder_parent(self, paths):
         """The folder of the open workspace (or of the first image) for 「現在のフォルダー内」."""

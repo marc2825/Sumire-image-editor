@@ -33,6 +33,8 @@ def quiet_overwrite_notice(monkeypatch, tmp_path):
     monkeypatch.setitem(workspace_tabs.QUIT_CONFIRMATION, "enabled", False)
     # Most tests check that saving removes metadata; keeping it is covered by tests that switch this back off.
     monkeypatch.setattr(window, "STRIP_METADATA_DEFAULT", True)
+    # Labelling tests check the labelled image; moving on has its own test.
+    monkeypatch.setattr(window, "AUTO_ADVANCE_DEFAULT", False)
     store = backups.OriginalBackups(tmp_path)
     monkeypatch.setattr(backups, "_store", store)
     from sumire import i18n

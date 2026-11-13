@@ -16,7 +16,7 @@ from .ui import TopicSidebar
 
 # Set only after a public documentation repository has been chosen.
 # Never derive this from the developer's (possibly private) Git remote.
-PUBLIC_DOCUMENTATION_REPOSITORY = ""
+PUBLIC_DOCUMENTATION_REPOSITORY = "https://github.com/marc2825/Sumire-image-editor"
 DOCUMENTATION_REF = "main"
 
 

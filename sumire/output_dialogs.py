@@ -54,6 +54,8 @@ class DestinationChooser(QWidget):
         super().__init__(parent)
         self.parent_folder = Path(parent_folder)
         self.chosen: Path | None = None
+        # Several fixed folder names (one per label) made inside the destination instead of one named folder.
+        self.fixed_names: list[str] | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
@@ -98,11 +100,21 @@ class DestinationChooser(QWidget):
             self.elsewhere.setChecked(True)
         self.refresh()
 
+    def set_fixed_names(self, names):
+        """Make a folder per name inside the destination (``None``: one folder named in the field)."""
+        self.fixed_names = list(names) if names else None
+        self.inside.setText(tr("現在のフォルダー内に作る") if self.fixed_names else tr("現在のフォルダー内に新しいフォルダーを作る"))
+        self.name.setVisible(self.fixed_names is None)
+        self.refresh()
+
     def refresh(self, *_args):
-        name = self.name.text().strip()
-        problem = folder_name_problem(name)
-        exists = (self.parent_folder / name).is_dir() if not problem else False
-        text = problem or (tr("既にあるフォルダーに追加：") if exists else "") + str(self.parent_folder / name)
+        if self.fixed_names:
+            text = tr("{folder} の中に {names}").format(folder=self.parent_folder, names=" · ".join(self.fixed_names))
+        else:
+            name = self.name.text().strip()
+            problem = folder_name_problem(name)
+            exists = (self.parent_folder / name).is_dir() if not problem else False
+            text = problem or (tr("既にあるフォルダーに追加：") if exists else "") + str(self.parent_folder / name)
         self.inside_path.setText(text)
         self.inside_path.setToolTip(text)
         self.chosen_label.setText(str(self.chosen) if self.chosen else tr("未選択"))
@@ -111,29 +123,58 @@ class DestinationChooser(QWidget):
 
     def problem(self):
         if self.inside.isChecked():
-            return folder_name_problem(self.name.text().strip())
+            return "" if self.fixed_names else folder_name_problem(self.name.text().strip())
         return "" if self.chosen else tr("保存先のフォルダーを選んでください。")
 
     def destination(self) -> Path:
+        """The folder to write into; with fixed names, the folder that will hold them."""
         problem = self.problem()
         if problem:
             raise ImageProblem(problem)
-        return (self.parent_folder / self.name.text().strip()).resolve() if self.inside.isChecked() else self.chosen
+        if self.inside.isChecked():
+            return self.parent_folder.resolve() if self.fixed_names else (self.parent_folder / self.name.text().strip()).resolve()
+        return self.chosen
 
 
-class AcceptedExportDialog(QDialog):
-    def __init__(self, paths, parent_folder, current_format="PNG", parent=None):
+class LabelExportDialog(QDialog):
+    """Move or copy the images of one label, or of every label into a folder per label.
+
+    ``counts`` is {label: number of images}. Moving takes the image files as they
+    are (no conversion); copying writes the edited images without metadata.
+    """
+
+    def __init__(self, counts, parent_folder, current_format="PNG", parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("採用画像を書き出す"))
-        self.setMinimumWidth(520)
-        self.count = len(paths)
-        self.first_suffix = paths[0].suffix.lower() if paths else ".png"
+        from .labels import REVIEW_LABELS
+        self.labels = REVIEW_LABELS
+        self.counts = counts
+        self.setWindowTitle(tr("ラベルごとに書き出す"))
+        self.setMinimumWidth(540)
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
-        intro = QLabel(tr("「採用」の画像 {count} 枚を、メタデータを削除して書き出します。元画像は変わりません。").format(count=len(paths)))
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-        self.chooser = DestinationChooser(parent_folder, tr("採用"), self)
+        row = QHBoxLayout()
+        row.addWidget(QLabel(tr("ラベル")))
+        self.label_combo = QComboBox()
+        for label, text in REVIEW_LABELS.items():
+            self.label_combo.addItem(tr("{text}（{count}枚）").format(text=text, count=counts.get(label, 0)), label)
+        self.label_combo.addItem(tr("すべてのラベル（採用・保留・不採用のフォルダーに分ける · {count}枚）").format(
+            count=sum(counts.values())), "all")
+        for index in range(self.label_combo.count()):
+            label = self.label_combo.itemData(index)
+            empty = sum(counts.values()) == 0 if label == "all" else not counts.get(label)
+            self.label_combo.model().item(index).setEnabled(not empty)
+        first = next((label for label in REVIEW_LABELS if counts.get(label)), "accepted")
+        self.label_combo.setCurrentIndex(self.label_combo.findData(first))
+        row.addWidget(self.label_combo, 1)
+        layout.addLayout(row)
+        self.move = QCheckBox(tr("元画像を移動する"))
+        self.move.setChecked(True)
+        layout.addWidget(self.move)
+        self.move_note = faint("")
+        self.move_note.setContentsMargins(26, 0, 0, 0)
+        layout.addWidget(self.move_note)
+        self.chooser = DestinationChooser(parent_folder, REVIEW_LABELS[first], self)
+        self.named = REVIEW_LABELS[first]
         layout.addWidget(self.chooser)
         self.renumber = QCheckBox(tr("連番に振り直す（一覧の順）"))
         self.renumber.setChecked(True)
@@ -141,39 +182,75 @@ class AcceptedExportDialog(QDialog):
         self.names = faint("")
         self.names.setContentsMargins(26, 0, 0, 0)
         layout.addWidget(self.names)
-        row = QHBoxLayout()
-        row.addWidget(QLabel(tr("形式")))
+        format_row = QHBoxLayout()
+        self.format_label = QLabel(tr("形式"))
+        format_row.addWidget(self.format_label)
         self.format_combo = QComboBox()
         for text, value in ((tr("元の形式のまま（PNG / JPEG / WebP。その他はPNG）"), "SOURCE"), ("PNG", "PNG"), ("JPEG", "JPEG"), (tr("WebP（可逆）"), "WEBP")):
             self.format_combo.addItem(text, value)
-        row.addWidget(self.format_combo, 1)
-        layout.addLayout(row)
+        format_row.addWidget(self.format_combo, 1)
+        layout.addLayout(format_row)
         self.problem = QLabel()
         self.problem.setObjectName("danger")
         layout.addWidget(self.problem)
-        buttons, self.ok = dialog_buttons(self, tr("書き出す"))
+        buttons, self.ok = dialog_buttons(self, tr("移動する"))
         layout.addWidget(buttons)
-        for signal in (self.renumber.toggled, self.chooser.name.textChanged, self.chooser.group.buttonToggled):
+        self.label_combo.currentIndexChanged.connect(self.label_changed)
+        for signal in (self.renumber.toggled, self.move.toggled, self.chooser.name.textChanged, self.chooser.group.buttonToggled):
             signal.connect(self.refresh)
         self.chooser.browse.clicked.connect(self.refresh)
-        self.refresh()
+        self.label_changed()
+
+    def label(self):
+        return self.label_combo.currentData()
+
+    def selected_labels(self):
+        return [label for label in self.labels if self.counts.get(label)] if self.label() == "all" else [self.label()]
+
+    def moving(self):
+        return self.move.isChecked()
 
     def format(self):
         return self.format_combo.currentData()
 
+    def label_changed(self, *_args):
+        label = self.label()
+        if label == "all":
+            self.chooser.set_fixed_names([self.labels[name] for name in self.selected_labels()])
+        else:
+            # Follow the label in the folder name until the user types their own.
+            if self.chooser.name.text().strip() in (self.named, *self.labels.values()):
+                self.chooser.name.setText(self.labels[label])
+            self.named = self.labels[label]
+            self.chooser.set_fixed_names(None)
+        self.refresh()
+
     def refresh(self, *_args):
+        moving = self.moving()
+        self.move_note.setText(tr("画像ファイルをそのまま移します（形式の変換・メタデータの削除はしません）。ラベルとメモも一緒に移り、「直前の整理操作を戻す」で戻せます。")
+                               if moving else
+                               tr("編集後の画像を、メタデータを削除して新しいファイルに書き出します。元画像は変わりません。"))
+        for widget in (self.format_label, self.format_combo):
+            widget.setEnabled(not moving)
+        count = sum(self.counts.get(label, 0) for label in self.selected_labels())
+        largest = max([self.counts.get(label, 0) for label in self.selected_labels()] or [0])
         if self.renumber.isChecked():
-            stems = sequence_stems(self.count)
+            stems = sequence_stems(max(1, largest))
             sample = stems[0] if len(stems) == 1 else f"{stems[0]}, {stems[1]}" + (f" … {stems[-1]}" if len(stems) > 2 else "")
-            self.names.setText(tr("名前：{sample}（桁数をそろえます。拡張子は形式に合わせます）").format(sample=sample))
+            self.names.setText(tr("名前：{sample}（フォルダーごとに桁数をそろえます）").format(sample=sample))
         else:
             self.names.setText(tr("元の名前のまま（同名のファイルがあれば _2 などを付けます）"))
-        problem = self.chooser.problem()
+        self.ok.setText(tr("{count}枚を移動する").format(count=count) if moving else tr("{count}枚を書き出す").format(count=count))
+        problem = self.chooser.problem() or ("" if count else tr("このラベルの画像がありません。"))
         self.problem.setText(problem)
         self.ok.setEnabled(not problem)
 
-    def destination(self):
-        return self.chooser.destination()
+    def destinations(self):
+        """{label: folder} for the chosen label(s)."""
+        folder = self.chooser.destination()
+        if self.label() == "all":
+            return {label: folder / self.labels[label] for label in self.selected_labels()}
+        return {self.label(): folder}
 
 
 COMPRESS_OPTIONS = (
@@ -205,7 +282,7 @@ class ConvertDialog(QDialog):
     first image; its result is encoded in the background to show the real size.
     """
 
-    def __init__(self, mode, count, parent_folder, sample, *, backup=True, source_format=None, parent=None):
+    def __init__(self, mode, count, parent_folder, sample, *, backup=True, source_format=None, keep_originals=True, parent=None):
         super().__init__(parent)
         self.mode = mode
         self.count = count
@@ -296,6 +373,14 @@ class ConvertDialog(QDialog):
         layout.addWidget(QLabel(tr("保存先")))
         self.chooser = DestinationChooser(parent_folder, tr("圧縮済み") if compress else tr("変換済み"), self)
         layout.addWidget(self.chooser)
+        # Size reduction can also replace the originals, for images whose format stays the same.
+        self.replace = QCheckBox(tr("元画像に上書きする（形式が変わらない画像だけ）"))
+        self.replace.setVisible(compress)
+        layout.addWidget(self.replace)
+        self.replace_note = faint("")
+        self.replace_note.setContentsMargins(26, 0, 0, 0)
+        self.keep_originals = keep_originals
+        layout.addWidget(self.replace_note)
         layout.addWidget(faint(tr("元画像のメタデータは書き出したファイルに含めません。")
                                + (tr("復元用に、管理記録へ圧縮して保存します（暗号化なし）。") if backup
                                   else tr("復元用の退避はオフです（保存方法の設定）。"))))
@@ -329,6 +414,8 @@ class ConvertDialog(QDialog):
         self.chooser.name.textChanged.connect(self.refresh_problem)
         self.chooser.group.buttonToggled.connect(self.refresh_problem)
         self.chooser.browse.clicked.connect(self.refresh_problem)
+        self.replace.toggled.connect(self.refresh_problem)
+        self.option_group.buttonToggled.connect(lambda *_args: self.refresh_problem())
         self.option_changed()
         self.refresh_problem()
 
@@ -397,13 +484,24 @@ class ConvertDialog(QDialog):
         prefix = tr("1枚目（{sample_name}）の試算：").format(sample_name=self.sample_name) if self.count > 1 else ""
         self.estimate.setText(f"{kind}\n{prefix}{size_summary(self.sample_size, size, label)}")
 
+    def replace_originals(self) -> bool:
+        return self.mode == "compress" and self.replace.isChecked()
+
     def refresh_problem(self, *_args):
-        problem = self.chooser.problem()
+        replace = self.replace_originals()
+        self.chooser.setEnabled(not replace)
+        if replace:
+            name = TARGETS[self.base_encoding().format][0]
+            self.replace_note.setText(tr("{name}の画像だけを、小さくした画像で置き換えます（ほかの形式の画像は変えません）。").format(name=name)
+                                      + (tr("置き換える前の元画像は、アプリの終了まで残します。") if self.keep_originals
+                                         else tr("置き換える前の元画像は残りません。")))
+        self.replace_note.setVisible(replace)
+        problem = "" if replace else self.chooser.problem()
         self.problem.setText(problem)
         self.ok.setEnabled(not problem)
 
     def destination(self):
-        return self.chooser.destination()
+        return None if self.replace_originals() else self.chooser.destination()
 
     def done(self, result):
         self.generation += 1

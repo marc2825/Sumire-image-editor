@@ -113,6 +113,7 @@ QLabel#faint { color: $text_faint; font-size: 12px; }
 QLabel#fileName { font-weight: 700; color: $text_strong; }
 QLabel#status { color: $text_muted; }
 QLabel#danger { color: $danger; font-size: 12px; }
+QLabel#keyHint { color: $text_faint; font-size: 10px; background: transparent; }
 QLabel#estimate { color: $accent; font-weight: 600; }
 QLabel#editPreview { background: $canvas; border: 1px solid $line; border-radius: 8px; }
 QLabel#valueRow { color: $text; }
@@ -128,6 +129,7 @@ QPushButton:pressed, QToolButton:pressed { background: $control_pressed; }
 QPushButton:disabled, QToolButton:disabled { color: $text_disabled; background: $control_disabled; border-color: $control_disabled; }
 QPushButton::menu-indicator, QToolButton::menu-indicator { image: none; width: 0; }
 QToolButton[popupMode="2"] { padding-right: 12px; }
+QToolButton[variant="listAction"] { padding: 6px 6px; }
 
 QPushButton#primary { color: $on_accent; background: $accent; border-color: $accent; font-weight: 700; padding: 6px 16px; }
 QPushButton#primary:hover { background: $accent_hover; border-color: $accent_hover; }
@@ -150,6 +152,10 @@ QPushButton[variant="link"]:hover { color: $accent_hover; text-decoration: under
 QToolButton#fileMenu { font-weight: 600; padding: 5px 10px; }
 QLabel#workspaceTitle { color: $text_muted; font-weight: 600; }
 QToolButton#saveMode { color: $text_muted; font-size: 12px; padding: 5px 10px; }
+QToolButton#restoreOriginal { color: $danger; background: $danger_soft; border: 1px solid $danger_line; padding: 5px 10px; }
+QToolButton#restoreOriginal:hover { border-color: $danger; }
+QToolButton#restoreOriginal:pressed { background: #5a3a37; }
+QToolButton#restoreOriginal:disabled { color: $text_disabled; background: $control_disabled; border-color: $line; }
 QToolButton#saveMode:hover { color: $text; }
 QToolButton#disclosure { background: transparent; border: none; color: $text_muted; font-weight: 700; font-size: 12px; padding: 4px 0; }
 QToolButton#disclosure:hover { color: $text; }
@@ -205,6 +211,9 @@ QComboBox:disabled, QLineEdit:disabled { color: $text_disabled; border-color: $l
 QLineEdit#zoomField { background: transparent; border: 1px solid transparent; color: $text_muted; font-size: 12px; padding: 3px 6px; }
 QLineEdit#zoomField:hover { border-color: $line_strong; }
 QLineEdit#zoomField:focus { background: $field; border-color: $accent_line; color: $text; }
+QLineEdit#positionValue { background: transparent; border: 1px solid transparent; color: $text_muted; padding: 2px 4px; }
+QLineEdit#positionValue:hover { border-color: $line_strong; }
+QLineEdit#positionValue:focus { background: $field; border-color: $accent_line; color: $text; }
 QComboBox::drop-down { border: none; width: 22px; }
 $combo_arrow
 QComboBox QAbstractItemView { background: $raised; border: 1px solid $line_strong; selection-background-color: $accent_soft; selection-color: $text_strong; outline: none; }

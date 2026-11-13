@@ -26,7 +26,7 @@ from .organize import pending_renames, recover_rename, rename_images, renamed_pa
 from .session import Receipts, source_key
 from .theme import TOKENS, dark_palette, stylesheet
 from .icons import icon, swatch
-from .ui import COPYRIGHT, ElidedLabel, install_dialog_tint, slider_with_box, FilenameField, Popover, ValueLabel, WelcomePage, ZoomField, describe_inputs, divider, section_label, tool_button
+from .ui import COPYRIGHT, ElidedLabel, fact_table, html_text, install_dialog_tint, slider_with_box, FilenameField, PositionField, Popover, ValueLabel, WelcomePage, ZoomField, attach_key_hint, describe_inputs, divider, key_hint, section_label, tool_button
 from .workers import Job
 from .workbench import Workbench
 from .explorer import configure_context_menu
@@ -52,6 +52,8 @@ BLUR_NOTE = tr("モザイク・ぼかしでは完全には隠せません。確�
 FILL_NOTE = tr("不透明度100%で、元の画素を完全に置き換えます。100%未満では元の画像が透けるので、確実に隠す箇所は100%にしてください。")
 # Saving keeps the source's metadata unless the user turns deletion on (or uses the delete button).
 STRIP_METADATA_DEFAULT = False
+# 「ラベルを付けたら次へ」 starts on.
+AUTO_ADVANCE_DEFAULT = True
 
 class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbench, QMainWindow):
     closed = Signal(object)
@@ -210,7 +212,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         splitter.addWidget(self._build_center())
         splitter.addWidget(self._build_tools_panel())
         # Wide enough for the two whole-tab action buttons to sit side by side.
-        splitter.setSizes([328, 712, 280])
+        splitter.setSizes([372, 668, 280])  # room for the list buttons two by two
         splitter.setStretchFactor(1, 1)
         self.pages.addWidget(splitter)
         layout.addWidget(self.pages, 1)
@@ -306,10 +308,16 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.metadata_delete_button.clicked.connect(self.metadata_button.trigger)
         self.metadata_delete_button.setToolTip(tr("表示中の画像のメタデータを削除し、現在の保存方法で保存します。"))
         self.metadata_delete_button.setAccessibleName(tr("表示中の画像のメタデータを削除"))
+        # Light red: it throws away the overwrites of this run for the shown image.
+        self.restore_original_button = QToolButton()
+        self.restore_original_button.setObjectName("restoreOriginal")
+        self.restore_original_button.setText(tr("上書き前に戻す"))
+        self.restore_original_button.setAccessibleName(tr("上書き前の元画像に戻す"))
+        self.restore_original_button.clicked.connect(self.restore_original_action.trigger)
         self.save_next_button = self._button(tr("保存して次へ →"), self.save_next, tr("Enter · 保存して次の画像へ（未編集でも保存）"), primary=True)
         self.save_next_button.setMinimumHeight(32)
         self.image_state_widgets = [self.undo_button, self.redo_button, self.save_state, self.metadata_state]
-        self.image_action_widgets = [self.metadata_delete_button, self.save_next_button]
+        self.image_action_widgets = [self.metadata_delete_button, self.restore_original_button, self.save_next_button]
         self.image_bar_compact = None
         self.arrange_image_bar(False)
         return bar
@@ -359,10 +367,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.file_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.file_label.setMinimumWidth(80)
         row.addWidget(self.file_label, 1)
-        self.position_label = ElidedLabel(tr("画像を読み込んでください"), Qt.TextElideMode.ElideRight)
-        self.position_label.setObjectName("muted")
-        self.position_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        self.position_label.setMinimumWidth(0)
+        self.position_label = PositionField()
+        self.position_label.jumpRequested.connect(self.jump_to_image)
         row.addWidget(self.position_label)
         row.addSpacing(12)
         # Hand the edited image (including unsaved edits) to other apps and services.
@@ -386,20 +392,21 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.share_button.setIcon(icon("share"))
         self.share_button.setAccessibleName(tr("共有"))
         row.addWidget(self.share_button)
-        # The four everyday image commands; rarer ones stay one level down.
+        # The everyday image commands; rarer ones (超解像 among them) stay one level down.
         self.image_menu = QMenu(self)
         self.image_menu.setToolTipsVisible(True)
-        for action in (self.manual_save, self.workflow_actions["save_as"], self.metadata_button, self.editor_actions["upscale"],
+        for action in (self.manual_save, self.workflow_actions["save_as"], self.metadata_button,
                        self.editor_actions["metadata"], self.restore_original_action):
             self.image_menu.addAction(action)
         self.image_menu.addSeparator()
         other = self.image_menu.addMenu(tr("その他"))
         other.setToolTipsVisible(True)
-        for item in (self.workflow_actions["convert_selected"], self.workflow_actions["compress_selected"], None,
+        for item in (self.editor_actions["upscale"], None,
+                     self.workflow_actions["convert_selected"], self.workflow_actions["compress_selected"], None,
                      self.metadata_restore, None,
                      self.mask_export, self.editor_actions["copy"], self.inverse_action):
             other.addSeparator() if item is None else other.addAction(item)
-        self.image_menu_button = tool_button("more", tr("この画像の操作 · 保存・別名で保存・メタデータ・超解像"))
+        self.image_menu_button = tool_button("more", tr("この画像の操作 · 保存・別名で保存・メタデータ・その他"))
         self.image_menu_button.setAccessibleName(tr("この画像の操作"))
         self.image_menu_button.setMenu(self.image_menu)
         self.image_menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -433,7 +440,10 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.mask_toggle = tool_button("mask", tr("加工範囲のマスクを表示 · M"), text=tr("マスク"), variant="ghost", checkable=True)
         self.mask_toggle.toggled.connect(self.show_edit_mask)
         row.addStretch(1)
-        for widget in (self.crop_tool, self.compare_button, self.mask_toggle):
+        # The keys of compare and mask, small and faint beside their buttons.
+        self.key_hints = getattr(self, "key_hints", {})
+        self.key_hints.update(compare=key_hint(), mask=key_hint())
+        for widget in (self.crop_tool, self.compare_button, self.key_hints["compare"], self.mask_toggle, self.key_hints["mask"]):
             row.addWidget(widget)
         row.addStretch(1)
         layout.addWidget(view_bar)
@@ -473,6 +483,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.erase_button.setObjectName("toggle")
         self.erase_button.setIcon(icon("eraser"))
         self.erase_button.setCheckable(True)
+        self.key_hints = getattr(self, "key_hints", {})
+        self.key_hints["eraser"] = attach_key_hint(self.erase_button)
         self.mode_buttons.append(("erase", self.erase_button))
         tools.addWidget(self.erase_button)
         self.reset_edits_button = self._button(tr("加工・マスクを初期化"), self.reset_edits_action.trigger,
@@ -606,6 +618,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
             label_row.addWidget(button)
         review.addLayout(label_row)
         self.auto_advance = QCheckBox(tr("ラベルを付けたら次へ"))
+        self.auto_advance.setChecked(AUTO_ADVANCE_DEFAULT)
         review.addWidget(self.auto_advance)
         outer.addWidget(footer)
         return container
@@ -631,6 +644,11 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.cancel_button.hide()
         status.addWidget(self.cancel_button)
         status.addSpacing(8)
+        # The shown image's size, beside the zoom.
+        self.image_size_label = QLabel()
+        self.image_size_label.setObjectName("muted")
+        status.addWidget(self.image_size_label)
+        status.addSpacing(6)
         self.zoom_label = ZoomField()
         self.zoom_label.zoomRequested.connect(lambda percent: self.canvas.zoom(percent / 100 / self.canvas.scale))
         fit = self.fit_button = tool_button("fit", tr("画面に合わせる · F"), self.canvas.fit, text=tr("全体"), variant="ghost")
@@ -711,6 +729,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         layout.addWidget(self.backup_note)
         for box in (self.auto, self.overwrite, self.keep_originals, self.metadata_backup):
             box.toggled.connect(self.update_save_notes)
+        self.keep_originals.toggled.connect(lambda *_args: self.update_controls())
         self.update_save_notes()
 
     def show_save_settings(self):
@@ -804,8 +823,9 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                 (self.welcome.open_folder_button, "open_folder", tr("フォルダーを開く")),
                 (self.undo_button, "undo", tr("元に戻す")), (self.redo_button, "redo", tr("やり直す")),
                 (self.help_button, "help", tr("ヘルプ")),
+                (self.reload_folder_button, "reload", tr("フォルダーを再読み込み（ほかのアプリで加えた画像も読み込みます）")),
                 (self.save_next_button, "save_next", tr("メタデータを削除して保存し、次の画像へ（未編集でも保存）")),
-                (self.search, "search", tr("ファイル名の一部で絞り込みます")),
+                (self.search, "search", tr("ファイル名かメモの一部で絞り込みます")),
                 (self.previous, "previous", tr("前の画像")), (self.next, "next", tr("次の画像")),
                 (self.erase_button, "eraser", tr("なぞった部分を元画像に戻します。もう一度押すと元のツールへ")),
                 (self.mask_toggle, "mask", tr("加工範囲のマスクを表示")),
@@ -817,7 +837,10 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.file_label.rename_hint = self.shortcut_hint("rename")
         self.file_label.setToolTip(self.file_label.text() + tr("\nダブルクリックで名前を変更") +
                                   (" · " + self.file_label.rename_hint if self.file_label.rename_hint else ""))
-        self.review_hint.setText(" / ".join(self.shortcut_hint(name) or tr("未設定") for name in ("rejected", "pending", "accepted")))
+        self.review_hint.setText(" / ".join(self.shortcut_hint(name) or tr("未設定") for name in REVIEW_LABELS))
+        for name, label in self.key_hints.items():
+            label.setText(self.shortcut_hint(name))
+            label.setVisible(bool(label.text()))
         for label, button in self.label_buttons.items():
             key = self.shortcut_hint(label)
             button.setToolTip((key + " · " if key else "") + tr("もう一度押すと解除。複数選択した画像にはまとめて付けます。"))
@@ -945,6 +968,12 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.metadata_delete_button.setEnabled(has and idle)
         self.metadata_restore.setEnabled(has and idle)
         self.restore_original_action.setEnabled(has and idle and originals().has(self.document.path))
+        kept = self.keep_originals.isChecked() and self.overwrite.isChecked()
+        self.restore_original_button.setEnabled(kept and self.restore_original_action.isEnabled())
+        self.restore_original_button.setToolTip(
+            tr("この起動中に最初に上書きする前の元画像に戻します。実行前に確認します。") if self.restore_original_button.isEnabled()
+            else tr("保存方法の「上書き前の元画像を一時的に残す」がオフのため使えません。") if not kept
+            else tr("この画像は、この起動中にまだ上書きしていません。上書きした後に、元画像へ戻せます。"))
         self.keep_originals.setEnabled(self.overwrite.isChecked())
         self.keep_originals_note.setEnabled(self.overwrite.isChecked())
         self.share_button.setEnabled(has and idle)
@@ -1105,6 +1134,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         hide = QCheckBox(tr("今後この確認を表示しない"))
         box.setCheckBox(hide)
         accept = box.addButton(tr("上書きする"), QMessageBox.ButtonRole.AcceptRole)
+        accept.setObjectName("primary")  # the expected choice, in the accent colour
         change = box.addButton(tr("保存方法を変更"), QMessageBox.ButtonRole.ActionRole)
         box.addButton(tr("キャンセル"), QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(accept)
@@ -1542,7 +1572,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.run_job(lambda cancel: stroke.finish(), done, failed)
 
     def after_edit(self):
-        self.position_label.setText(f"{self.index + 1} / {len(self.model.paths)} · {self.document.image.width} × {self.document.image.height}")
+        self.show_position()
         edited = self.document.edited
         unedited = self.document.edit_state is False
         self.model.state(self.document.path, "編集中 · 未保存" if edited else "未編集 · 保存待ち" if unedited else "変更なし · 保存待ち")
@@ -1768,8 +1798,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.proxy.refresh()
         if self.document:
             self.index = self.model.rows[self.document.path]
-            width, height = self.document.image.size
-            self.position_label.setText(f"{self.index + 1} / {len(paths)} · {width} × {height}")
+            self.show_position()
             self._select_current()
         selection.blockSignals(False)
         if selected_paths:
@@ -2061,6 +2090,25 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.load_job = self.run_job(scan, done, failed)
         self.load_job.signals.cancelled.connect(self._load_cancelled)
 
+    def show_position(self):
+        """「4 / 111」 above the image and its size in the status bar."""
+        if self.document is None:
+            self.image_size_label.clear()
+            return
+        self.position_label.set_position(self.index, len(self.model.paths))
+        width, height = self.document.image.size
+        self.image_size_label.setText(f"{width} × {height}")
+
+    def jump_to_image(self, index):
+        """The number typed above the image (1-based on screen)."""
+        if 0 <= index < len(self.model.paths):
+            if self.model.paths[index] in self.visible_paths():
+                self.request_index(index)
+            else:
+                self.info(tr("{number}枚目は、絞り込みや検索で表示されていません。").format(number=index + 1))
+        self.show_position()
+        self.canvas.setFocus()
+
     def request_index(self, index):
         if (index != self.index or self.document is None) and 0 <= index < len(self.model.paths):
             self.guard(lambda: self._load_index(index))
@@ -2219,8 +2267,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.canvas.set_document(document, render=self.workspace_active)
         self.name.setText(document.output.stem if document.output else document.path.stem)
         self._select_current()
-        width, height = document.image.size
-        self.position_label.setText(f"{index + 1} / {len(self.model.paths)} · {width} × {height}")
+        self.show_position()
         self.setWindowTitle(f"{document.path.name} — Sumīre")
         if document.saved_revision == document.revision:
             self.show_saved_state(document)
@@ -2527,20 +2574,18 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         dialog = QMessageBox(self)
         dialog.setWindowTitle(tr("メタデータの一括削除を確認"))
         dialog.setIcon(QMessageBox.Icon.Warning if overwrite else QMessageBox.Icon.Question)
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
-        dialog.setText(tr("このタブの画像 {count} 枚のメタデータを削除しますか？").format(count=len(paths)))
-        details = [tr("対象のタブ：{workspace_title}").format(workspace_title=self.workspace_title()),
-                   tr("選択・絞り込みにかかわらず、この時点の一覧全体が対象です。")]
+        dialog.setTextFormat(Qt.TextFormat.RichText)
+        dialog.setText(html_text(tr("このタブの画像 {count} 枚のメタデータを削除しますか？").format(count=len(paths))))
+        rows = [(tr("対象"), tr("「{workspace_title}」の一覧全体（選択・絞り込みに関係なく）").format(workspace_title=self.workspace_title()))]
         if overwrite:
-            details.extend([tr("保存方法：元画像に上書き（同じ場所・名前・形式）"),
-                            tr("上書き前の元画像はアプリの終了まで残り、「⋯ → 上書き前の元画像に戻す」で戻せます。")
-                            if self.keep_originals.isChecked() else tr("元のファイルは残りません（削除したメタデータは「元に戻す」では戻りません）。")])
+            rows += [(tr("保存方法"), tr("元画像に上書き（同じ場所・名前・形式）")),
+                     (tr("元画像"), tr("アプリの終了まで残す（「上書き前に戻す」で戻せる）") if self.keep_originals.isChecked()
+                      else tr("残さない（削除したメタデータは「元に戻す」で戻らない）"))]
         else:
-            details.extend([tr("保存方法：別フォルダーへ保存"), tr("保存先：{output_folder}").format(output_folder=self.output_folder),
-                            tr("保存形式：{currentText}").format(currentText=self.format_combo.currentText())])
-        details.append(tr("削除前メタデータの退避：") + (tr("有効（管理記録に圧縮保存）") if self.metadata_backup.isChecked() else tr("無効（新たな退避はしません）")))
-        details.append(tr("モザイクなどの加工は保ったまま保存します。"))
-        dialog.setInformativeText("\n\n".join(details))
+            rows += [(tr("保存方法"), tr("別フォルダーへ保存（元画像は変えない）")), (tr("保存先"), str(self.output_folder)),
+                     (tr("形式"), self.format_combo.currentText())]
+        rows.append((tr("削除前の情報"), tr("復元用に残す（管理記録に圧縮して保存）") if self.metadata_backup.isChecked() else tr("残さない")))
+        dialog.setInformativeText(fact_table(rows, [tr("モザイクなどの加工はそのまま保ちます。")]))
         dialog.setDetailedText("\n".join(str(path) for path in paths))
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         dialog.button(QMessageBox.StandardButton.Ok).setText(tr("削除して保存"))
@@ -2572,7 +2617,9 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
 
     def _start_batch(self, paths=None, export_folder=None, names=None, format=None):
         """Save or export ``paths``; ``names`` maps a path to a new file stem and
-        ``format="SOURCE"`` keeps each PNG / JPEG / WebP format (others become PNG)."""
+        ``format="SOURCE"`` keeps each PNG / JPEG / WebP format (others become PNG).
+
+        ``export_folder`` is one folder, or {path: folder} to export into several."""
         paths = list(self.model.paths if paths is None else paths)
         if export_folder is None and any(self.is_clipboard_path(path) and
                 (path not in self.documents or self.documents[path].output is None) for path in paths):
@@ -2582,8 +2629,10 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         project_paths = {path for path, doc in self.documents.items() if getattr(doc, "project", False)}
         previous_failures = dict(self.batch_failures) if export_folder == getattr(self, "failed_export_folder", None) else {}
         self.begin_batch_progress(len(paths))
-        folder = export_folder or self.output_folder
-        receipts = Receipts(folder) if export_folder else self.receipts
+        export_folders = export_folder if isinstance(export_folder, dict) else None
+        folder = self.output_folder if export_folder is None or export_folders is not None else export_folder
+        receipts = Receipts(folder) if export_folder is not None and export_folders is None else self.receipts
+        export_receipts = {target: Receipts(target) for target in set(export_folders.values())} if export_folders else {}
         chosen_format = format or self.format_combo.currentData()
         jpeg_quality = self.jpeg_quality
         overwrite = self.overwrite.isChecked() and export_folder is None
@@ -2611,7 +2660,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                     format = chosen_format if chosen_format != "SOURCE" else kept_format(source_formats.get(path) or detect_format(path))
                     if overwrite and path.parent not in indexes:
                         indexes[path.parent] = Receipts(path.parent)
-                    index = indexes[path.parent] if overwrite else receipts
+                    index = indexes[path.parent] if overwrite else export_receipts[export_folders[path]] if export_folders else receipts
                     record = index.get(path, overwrite=overwrite)
                     edited = snapshot_states.get(path, False)
                     if path not in snapshot_states and record:
@@ -2651,7 +2700,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                         prior_digest = image_digest or owned_digest or source_digest or file_digest(path)
                         mask = MaskStore(path.parent).get(path, prior_digest, image.size)
                     if target is None:
-                        target = available_target(folder, names.get(path, path.stem) if names else path.stem, format)
+                        target = available_target(export_folders[path] if export_folders else folder,
+                                                  names.get(path, path.stem) if names else path.stem, format)
                     previous_key = source_key(path) if overwrite else None
                     result = save_image(image, target, source=path, format=source_format if overwrite else format, cancel=cancel,
                                         owned_digest=owned_digest, overwrite_source=overwrite, source_digest=source_digest,

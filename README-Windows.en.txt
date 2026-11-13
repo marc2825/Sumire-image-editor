@@ -1,4 +1,4 @@
-Sumīre 1.00.0 / Windows 11 x64
+Sumīre 1.01.0 / Windows 11 x64
 
 Getting started
 Extract the whole ZIP and double-click sumire.exe. Python is not needed.
@@ -9,7 +9,7 @@ To switch the language, use the box at the bottom right of the start page, or op
 
 Basic use
 Trace over what you want to hide; it is saved automatically. Enter saves and moves to the next image; ← → move between images.
-The list is on the left, the image in the centre, and the editing tools and sorting (Reject / Hold / Accept, keys 1, 2, 3) on the right.
+The list is on the left, the image in the centre, and the editing tools and sorting (Accept / Hold / Reject, keys 1, 2, 3) on the right.
 If you get stuck, open the help with “?” at the top right or F1 (it works offline).
 
 Main features
@@ -30,7 +30,12 @@ After deciding where to keep the extracted folder, choose the gear at the top ri
 Register again after moving the folder, and remove the entry before deleting it.
 
 Updating
-Extract the new ZIP into another folder, quit the old app, then start the new one. Settings, records and edit projects carry over. Deleting the extracted folder leaves images, settings and records in place. Change or delete where records are kept under “Records” in the settings.
+Extract the new ZIP into another folder, quit the old app, then start the new one. Settings, records and edit projects carry over. Deleting the extracted folder leaves images, settings and records in place. Change or delete where records are kept under “Records” in the settings. If you added the right-click entry, register it again from the new folder.
+
+Uninstalling
+1. If you added the right-click entry, double-click unregister-context-menu.cmd in the extracted folder to remove it (or use the gear → “Windows” → “Remove the right-click entry”).
+2. To remove settings and records too, delete the records under “Records” in the settings, then delete the %LOCALAPPDATA%\Sumīre folder (and, if you have used Sumīre since 0.4.0 or earlier, .sumire-index.sqlite3 in the image folders).
+3. Delete the extracted folder. Your images are not touched.
 
 Detailed instructions are in the docs folder (English in docs/en), changes in CHANGELOG.md (Japanese), and tested environments in docs/VALIDATION_SUMMARY.md (Japanese).
 For reporting problems see docs/en/SECURITY.md; licences are in LICENSE, THIRD_PARTY_NOTICES.md and the licenses folder, and how to replace Qt and get its source is in QT_REPLACEMENT.md.

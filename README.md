@@ -1,6 +1,6 @@
 # Sumīre — 画像の仕上げ
 
-[![version](https://img.shields.io/badge/version-1.00.0-a7dfc2)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.txt)
+[![version](https://img.shields.io/badge/version-1.01.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.txt)
 
 画像の一部をモザイクやぼかしで隠したり、メタデータを確認・削除したりできる、Windows 11向けのアプリです。大量の画像の仕分けや書き出しにも使えます。画像の処理はすべてPC内で行います。
 
@@ -17,8 +17,8 @@
 - **隠す**：モザイク・ぼかし・塗りつぶし。ブラシのほか、長方形・楕円・多角形・投げ縄で範囲を指定できます。消しゴム、元に戻す／やり直す、元画像との比較つき。
 - **メタデータを見る・消す**：EXIF・PNGのテキスト・生成プロンプトなどを一覧で確認し、1枚ずつ、またはまとめて削除できます。NovelAIが透明度に埋め込む情報（Stealth PNGInfo）も消し、残っていないことを確かめます。初期設定では、保存してもメタデータは残ります。
 - **あとから戻す**：削除する前のメタデータを残しておき、別名のコピーに戻せます。
-- **仕分ける**：不採用・保留・採用のラベル、絞り込み、作業タブ、フォルダー間の移動、連番での名前変更、重複の削除、複数枚の比較。
-- **書き出す**：形式の変換（PNG・JPEG・WebP・AVIF・BMP・TIFF・GIF）、容量削減、採用分の書き出し、コラージュ。
+- **仕分ける**：採用・保留・不採用のラベル（ラベルごとのフォルダーへの振り分け）、絞り込み、作業タブ、フォルダー間の移動、連番での名前変更、重複の削除、複数枚の比較。
+- **書き出す**：形式の変換（PNG・JPEG・WebP・AVIF・BMP・TIFF・GIF）、容量削減、コラージュ。
 - **整える**：切り抜き・リサイズ・回転・反転、色調（明るさ・コントラスト・彩度・色相・露出・色温度など）、超解像。
 - **共有**：メタデータを除いた画像を、NovelAIのImage2Imageや、ほかのアプリへ渡せます。
 

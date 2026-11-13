@@ -28,7 +28,7 @@ def test_whole_tab_buttons_form_a_grid_and_stack_when_narrow(qtbot, tabs, tmp_pa
                     and more.x() < page.export_accepted_button.mapTo(page.library_panel, export.topLeft() * 0).x())
         return delete.bottom() < export.top() and export.bottom() < reset.top() and abs(delete.left() - reset.left()) <= 2
     tabs.resize(1320, 850)
-    page.splitter.setSizes([340, 700, 280])
+    page.splitter.setSizes([380, 660, 280])
     qtbot.waitUntil(lambda: placed(True))
     tabs.resize(800, 600)
     qtbot.waitUntil(lambda: placed(False))
@@ -51,7 +51,7 @@ def test_cancel_keeps_labels_and_dialog_defaults_to_cancel(qtbot, window):
     window.reset_labels_button.click()
     assert observed["title"] == "仕分けのリセットを確認" and "3 枚" in observed["text"]
     assert "不採用 1 枚" in observed["info"] and "採用 1 枚" in observed["info"]
-    assert "選択・絞り込みにかかわらず" in observed["info"] and "メモ" in observed["info"]
+    assert "選択・絞り込みに関係なく" in observed["info"] and "メモ" in observed["info"]
     assert observed["default"] == observed["escape"] == QMessageBox.StandardButton.Cancel
     assert observed["accept_text"] == "リセット"
     assert [window.model.labels.get(path) for path in paths] == ["accepted", "pending", "rejected"]

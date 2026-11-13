@@ -1,6 +1,6 @@
 # Sumīre — image finishing
 
-[![version](https://img.shields.io/badge/version-1.00.0-a7dfc2)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.en.txt)
+[![version](https://img.shields.io/badge/version-1.01.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.en.txt)
 
 [日本語](README.md) · English · [简体中文](README.zh-CN.md)
 
@@ -17,8 +17,8 @@ On the first start, choose where to save: overwrite the originals, or save to a 
 - **Hide**: mosaic, blur and fill, with a brush, rectangle, ellipse, polygon or lasso. Eraser, undo / redo and comparison with the original.
 - **View and remove metadata**: see EXIF, PNG text, generation prompts and more as a list, and remove them one image at a time or in bulk. NovelAI's information embedded in transparency (Stealth PNGInfo) is removed too, and the saved file is checked. By default, metadata is kept when saving.
 - **Restore later**: metadata removed from an image can be kept and restored into a separate copy.
-- **Sort**: Reject / Hold / Accept labels, filters, tabs, moving between folders, numbered renaming, duplicate removal and side-by-side comparison.
-- **Export**: convert to PNG, JPEG, WebP, AVIF, BMP, TIFF or GIF, reduce file size, export the accepted images, make collages.
+- **Sort**: Accept / Hold / Reject labels (and sorting into a folder per label), filters, tabs, moving between folders, numbered renaming, duplicate removal and side-by-side comparison.
+- **Export**: convert to PNG, JPEG, WebP, AVIF, BMP, TIFF or GIF, reduce file size, make collages.
 - **Adjust**: crop, resize, rotate, flip, colour (brightness, contrast, saturation, hue, exposure, temperature and more), upscale.
 - **Share**: hand images without metadata to NovelAI's Image2Image or to other apps.
 

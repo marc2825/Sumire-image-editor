@@ -1,7 +1,7 @@
 """Check a packaged Windows ZIP the way a user would get it.
 
-    python -m scripts.verify_distribution dist\\Sumire-v1.00.0-win64.zip --report test-artifacts\\distribution.json
-    python -m scripts.verify_distribution dist\\Sumire-v1.00.0-win64.zip --replace-qt C:\\qt\\6.12.0\\msvc2022_64
+    python -m scripts.verify_distribution dist\\Sumire-v1.01.0-win64.zip --report test-artifacts\\distribution.json
+    python -m scripts.verify_distribution dist\\Sumire-v1.01.0-win64.zip --replace-qt C:\\qt\\6.12.0\\msvc2022_64
 
 Run on Windows with the environment that built the ZIP. It
 - compares the ZIP with its external .sha256 file and every file with SHA256SUMS.txt inside,
@@ -30,7 +30,7 @@ import zipfile
 from sumire import DISPLAY_VERSION
 
 NAME = f"Sumire-v{DISPLAY_VERSION}-win64"
-DOCUMENTS = ("sumire.exe", "LICENSE", "THIRD_PARTY_NOTICES.md", "QT_REPLACEMENT.md", "README-Windows.txt",
+DOCUMENTS = ("sumire.exe", "unregister-context-menu.cmd", "LICENSE", "THIRD_PARTY_NOTICES.md", "QT_REPLACEMENT.md", "README-Windows.txt",
              "README-Windows.en.txt", "README-Windows.zh-CN.txt", "CHANGELOG.md", "SHA256SUMS.txt",
              "docs/VALIDATION_SUMMARY.md", "licenses/Python/LICENSE.txt", "licenses/Qt/LGPL-3.0-only.txt",
              "licenses/Qt/GPL-3.0-only.txt", "licenses/Qt/THIRD_PARTY.md", "licenses/NotoSansJP/OFL.txt",

@@ -1,6 +1,6 @@
 """Screenshots of the real app for the distribution page, using only synthetic images.
 
-    python -m scripts.capture_screens --output release/booth/media
+    python -m scripts.capture_screens --output dist/media
 
 Each interface language runs in its own process (texts are made when the
 interface modules load). The app is set up exactly as at a normal start
@@ -142,10 +142,12 @@ def capture(code: str, output: Path, work: Path) -> int:
     # Sort a few images, then come back to the first one and hide its signature.
     first = page.document.path
     for label in ("accepted", "rejected", "pending"):
+        shown = page.document.path
         page.set_review_label(label)
         settle(app, 0.2)
-        page.navigate(1)
-        wait(app, lambda: page.document is not None and page.canvas.ready and not page.busy())
+        if page.document.path == shown:  # 「ラベルを付けたら次へ」 is off
+            page.navigate(1)
+        wait(app, lambda: page.document is not None and page.document.path != shown and page.canvas.ready and not page.busy())
     for _ in range(3):
         page.navigate(-1)
         wait(app, lambda: page.document is not None and page.canvas.ready and not page.busy())
