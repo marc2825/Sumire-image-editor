@@ -1,0 +1,48 @@
+# Shortcuts
+
+These are the default keys. Change them in “Settings (gear) → Shortcuts” at the top right (up to two keys per command; a key cannot be used for two commands).
+Keys that act on the image work when the image area is selected. While you type text, typing takes priority.
+
+| Command | Key |
+| --- | --- |
+| Open folder | Ctrl+O |
+| “File” menu | Alt+F |
+| Reload the list (brings back removed images) | Ctrl+R |
+| Save | Ctrl+S |
+| Previous / next image | ← / → |
+| Save and next (saves even if unedited) | Enter |
+| Undo / redo | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) |
+| New tab / close tab | Ctrl+T / Ctrl+W |
+| Next / previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
+| Rename | F2, or double-click the image name |
+| Search by name | Ctrl+F |
+| Reject / Hold / Accept | 1 / 2 / 3 |
+| Remove label | Alt+0 |
+| Undo the last organising step | Ctrl+Alt+Z |
+| Toggle the eraser | E |
+| Show the mask | M |
+| Compare with the original | Tab (while held) |
+| Zoom in / out | Wheel / + / −. You can also type a number into the zoom box at the bottom right and press Enter |
+| Move the view | Space + drag / drag with the middle button |
+| Fit / actual size | F / Ctrl+1 |
+| Smaller / larger brush | [ / ] |
+| Weaker / stronger | , / . |
+| Cancel while tracing | Esc |
+| Help | F1 |
+| Copy the result | Ctrl+C |
+| Open the clipboard image | Ctrl+V |
+| Full screen | F11 |
+
+## Fixed keys
+
+| Command | Key |
+| --- | --- |
+| Eyedropper | Alt+click |
+| Straight line from the last brush position | Shift+click |
+| Add a polygon point / finish | Click / Enter or double-click |
+| Remove the last point / cancel | Backspace / Esc |
+| Confirm / cancel a name | Enter / Esc |
+
+“Undo” only undoes edits to the image. Labels, order, names, notes and folder moves are undone with “Undo the last organising step”.
+
+[Getting started](USER_GUIDE.md) · [Features](FEATURES.md)

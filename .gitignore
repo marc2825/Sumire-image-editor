@@ -1,0 +1,48 @@
+.venv/
+.venv-windows/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+*.spec
+.sumire-*.tmp
+.sumire-index.sqlite3*
+.sumi-*.tmp
+.sumi-index.sqlite3*
+*.sumire
+*.sumi
+test-artifacts/
+clipboard-images/
+
+# Independent public repository export
+/public-repository/
+
+# Generated release artefacts (public source tree, distribution ZIPs)
+/release/source/
+/release/distribution/
+
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+.venv*/
+.vscode/
+.idea/
+.agents/
+.codex/
+.aws/
+
+# User data and metadata recovery records
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.sumire
+*.sumi
+.sumire-rename-*.json
+.sumi-rename-*.json
+*.log
