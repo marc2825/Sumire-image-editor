@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 
 from sumire import window as window_module
 from sumire.labels import REVIEW_LABELS
+from sumire.theme import TOKENS
 from sumire.ui import fact_table
 
 from test_gui import draw, wait_saved, window  # noqa: F401  (fixture)
@@ -75,10 +76,16 @@ def test_search_finds_notes_as_well_as_names(qtbot, window):
 
 
 def test_compare_mask_and_eraser_show_their_keys(window):
-    assert window.key_hints["compare"].text() == "Tab"
-    assert window.key_hints["mask"].text() == "M"
-    assert window.key_hints["eraser"].text() == "E"
-    assert window.key_hints["eraser"].parent() is window.erase_button
+    for name, button, key in (("compare", window.compare_button, "Tab"), ("mask", window.mask_toggle, "M"),
+                              ("eraser", window.erase_button, "E")):
+        hint = window.key_hints[name]
+        # Inside the button, right after its text, small and underlined: 消しゴム（E）.
+        assert hint.key == key and hint.text() == f"（<u>{key}</u>）"
+        assert hint.parent() is button and hint.isVisible()
+        assert button.width() // 2 < hint.x() and hint.geometry().right() < button.width()
+    hint = window.key_hints["eraser"]
+    hint.set_key("")
+    assert not hint.isVisible() and window.erase_button.styleSheet() == ""
 
 
 def test_upscale_is_under_more_in_the_image_menu(window):
@@ -104,11 +111,12 @@ def test_first_overwrite_button_is_the_green_primary_one(window, monkeypatch):
 
     def inspect(box):
         accept = next(button for button in box.buttons() if button.text() == "上書きする")
-        seen.append((accept.objectName(), box.defaultButton() is accept))
+        # The colour actually drawn, not only the name the style sheet matches on.
+        seen.append((accept.objectName(), box.defaultButton() is accept, accept.palette().button().color().name()))
         return 0
     monkeypatch.setattr(QMessageBox, "exec", inspect)
     window.confirm_first_overwrite()
-    assert seen == [("primary", True)]
+    assert seen == [("primary", True, TOKENS["accent"])]
 
 
 def test_fact_table_lists_facts_and_escapes_text():
@@ -179,3 +187,12 @@ def test_typing_a_zoom_percentage_zooms(qtbot, window):
     QTest.keyClick(zoom, Qt.Key.Key_Return)
     assert abs(window.canvas.scale - 1.5) < 0.01
     assert window.index == 0 and not window.saving
+
+
+def test_the_mosaic_brush_starts_as_the_fine_mosaic_preset(window):
+    from sumire.app_features import DEFAULT_PRESETS
+    preset = DEFAULT_PRESETS["細かいモザイク"]
+    assert window.mode == preset["mode"] == "mosaic"
+    assert (window.brush.value(), window.strength.value(), window.expansion.value()) == (preset["brush"], preset["strength"], preset["expansion"])
+    assert (window.color, window.shape_combo.currentData()) == (preset["color"], preset["shape"])
+    assert window.default_settings["strengths"]["mosaic"] == preset["strength"]

@@ -193,3 +193,62 @@ def test_reset_with_no_changes_preserves_pending_autosave_after_undo(qtbot, wind
     wait_saved(qtbot, window)
     with Image.open(window.document.output) as saved:
         assert saved.convert("RGBA").tobytes() == original
+
+
+def test_right_click_delete_moves_to_the_trash_only_after_confirming(qtbot, window, monkeypatch):
+    from pathlib import Path
+    from sumire import workbench
+    trashed = []
+
+    class FakeFile:
+        @staticmethod
+        def moveToTrash(path):
+            trashed.append(Path(path))
+            Path(path).unlink()
+            return True
+    monkeypatch.setattr(workbench, "QFile", FakeFile)
+    window.watch_timer.stop()
+    source = window.document.path
+    index = window.proxy.mapFromSource(window.model.index(window.index))
+    window.show_library_context_menu(window.list.visualRect(index).center())
+    assert window.workflow_actions["delete_selected"] in window.context_menu.actions()
+    window.context_menu.hide()
+    observed = reply_to_confirmation()  # cancel
+    window.workflow_actions["delete_selected"].trigger()
+    assert observed["title"] == "画像を削除" and "ごみ箱" in observed["text"] and str(source) in observed["paths"]
+    assert observed["default"] == observed["escape"] == QMessageBox.StandardButton.Cancel
+    assert source.exists() and not trashed and source in window.model.rows
+    reply_to_confirmation(QMessageBox.StandardButton.Ok)
+    window.workflow_actions["delete_selected"].trigger()
+    qtbot.waitUntil(lambda: source not in window.model.rows, timeout=10000)
+    assert trashed == [source] and not source.exists()
+    assert "ごみ箱へ移しました · 1枚" in window.status.text()
+    # On to another image.
+    qtbot.waitUntil(lambda: window.document is not None and window.document.path != source, timeout=10000)
+
+
+def test_discarding_edits_when_moving_on_clears_the_editing_mark(qtbot, window, monkeypatch):
+    window.auto.setChecked(False)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Discard)
+    first = window.document.path
+    before = window.model.states.get(first, "")
+    draw(window)
+    qtbot.waitUntil(lambda: window.document.dirty and not window.finalizing and window.canvas.ready, timeout=10000)
+    assert window.model.states[first].startswith("編集中")
+    window.navigate(1)
+    qtbot.waitUntil(lambda: window.document is not None and window.document.path != first and window.canvas.ready, timeout=10000)
+    assert window.model.states.get(first, "") == before  # as before the discarded edits
+    # Saved, edited again, then discarded: the list shows it saved again.
+    window.navigate(-1)
+    qtbot.waitUntil(lambda: window.document is not None and window.document.path == first and window.canvas.ready, timeout=10000)
+    draw(window)
+    qtbot.waitUntil(lambda: window.document.dirty and not window.finalizing and window.canvas.ready, timeout=10000)
+    window.save()
+    qtbot.waitUntil(lambda: not window.saving and not window.document.dirty, timeout=10000)
+    saved = window.model.states[first]
+    assert "保存済み" in saved
+    draw(window, start=(40, 60), end=(90, 60))
+    qtbot.waitUntil(lambda: window.document.dirty and not window.finalizing and window.canvas.ready, timeout=10000)
+    window.navigate(1)
+    qtbot.waitUntil(lambda: window.document is not None and window.document.path != first and window.canvas.ready, timeout=10000)
+    assert window.model.states[first] == saved

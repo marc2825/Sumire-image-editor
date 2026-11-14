@@ -223,30 +223,53 @@ class FolderFeatures:
 
     def move_to_folder(self, paths, folder):
         folder = Path(folder).resolve()
+        self.move_to_folders({path: folder for path in paths})
+
+    def move_to_folders(self, targets, create=False):
+        """Move each image into its folder ({path: folder}); ``create`` makes missing folders."""
         if self.busy() or self.saving:
             return
-        paths = [path for path in paths if path in self.model.rows and path.parent != folder]
-        if not paths:
+        targets = {path: Path(folder) for path, folder in targets.items() if path in self.model.rows and path.parent != Path(folder)}
+        if not targets:
             return
         current = self.document.path if self.document else None
-        unsaved = [path for path in paths if path in self.documents and self.documents[path].dirty and path != current]
+        unsaved = [path for path in targets if path in self.documents and self.documents[path].dirty and path != current]
         if unsaved:
             self.error(tr("未保存の編集がある画像は移動できません。保存してから移動してください。"))
             return
-        action = lambda: self._move_to_folder(paths, folder)
-        if current in paths and self.document.dirty:
+        action = lambda: self._move_to_folders(targets, create)
+        if current in targets and self.document.dirty:
             self.guard(action)
         else:
             action()
 
-    def _move_to_folder(self, paths, folder):
+    def _move_to_folders(self, targets, create):
         if self.busy() or self.saving:
             return
-        paths = [path for path in paths if path in self.model.rows]
+        targets = {path: folder for path, folder in targets.items() if path in self.model.rows}
+        folders = list(dict.fromkeys(targets.values()))
+        name = folders[0].name if len(folders) == 1 else None
         self.autosave_timer.stop()
         self.finalizing = True
         self.update_controls()
-        self.info(tr("「{name}」へ移動中…").format(name=folder.name))
+        self.info(tr("「{name}」へ移動中…").format(name=name) if name else tr("フォルダーへ移動中…"))
+
+        def work(cancel):
+            moved, failed = {}, {}
+            for folder in folders:
+                group = [path for path, target in targets.items() if target == folder]
+                if create:
+                    try:
+                        if folder.is_symlink():
+                            raise OSError()
+                        folder.mkdir(exist_ok=True)
+                    except OSError:
+                        failed.update(dict.fromkeys(group, tr("移動先のフォルダーを作れません。場所とアクセス権を確認してください。")))
+                        continue
+                done_here, failed_here = move_images(group, folder, cancel=cancel)
+                moved.update(done_here)
+                failed.update(failed_here)
+            return moved, failed
 
         def done(result):
             self.finalizing = False
@@ -258,7 +281,9 @@ class FolderFeatures:
             self.refresh_folders()
             self.update_controls()
             key = self.shortcut_hint("undo_organize")
-            text = tr("「{name}」へ移動しました · {count}枚").format(name=folder.name, count=len(moved)) + (tr("（{key}で戻せます）").format(key=key) if moved and key else "")
+            text = (tr("「{name}」へ移動しました · {count}枚").format(name=name, count=len(moved)) if name else
+                    tr("フォルダーへ移動しました · {count}枚").format(count=len(moved)))
+            text += tr("（{key}で戻せます）").format(key=key) if moved and key else ""
             if failed:
                 self.error(text + tr(" / 移動できなかった画像 {count}枚").format(count=len(failed)))
                 self.show_text_window(tr("移動できなかった画像"), "\n\n".join(f"{path}\n{reason}" for path, reason in failed.items()))
@@ -271,7 +296,7 @@ class FolderFeatures:
             self.update_controls()
             self.error(message)
 
-        self.run_job(lambda cancel: move_images(paths, folder, cancel=cancel), done, fail)
+        self.run_job(work, done, fail)
 
     def move_labelled(self, groups, destinations, names=None):
         """Move each label's images ({label: [path]}) into its folder ({label: folder}), as they are.

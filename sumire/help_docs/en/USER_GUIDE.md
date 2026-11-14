@@ -55,6 +55,7 @@ To remove it on every save, turn on “Remove metadata when saving”. See also 
 Label images with “Accept”, “Hold” and “Reject” at the bottom right (keys 1, 2, 3). Labelling moves on to the next image (turn this off with “Next after labelling”). Labels never delete images. Select several with Ctrl or Shift to label them together.
 
 - Sort into label folders: “Export by label” above the list. Choose Accept, Hold, Reject or all labels; it creates a folder named after each label in the open folder and moves the images there, renumbered 00, 01…. Turn off “Move the original files” to leave the originals and write the edited images without metadata instead. The destination and numbering can be changed.
+- Sort automatically: turn on “Sort into label folders automatically” (right-click → “Label”, or Settings → Display and import → Sorting). Wherever Accept / Hold / Reject folders exist, a labelled image moves into its folder at once (Accept inside “Hold” moves it to the “Accept” beside it). Hover over the option for the full rule.
 - Remove all labels: “Reset sorting” above the list.
 - Undo the last organising step: the arrow above the list (Ctrl+Alt+Z). Undoes labels, order, names, notes and folder moves.
 - Reorder: drag images in the list. The order can be changed with the button to the right of the search box.
@@ -62,6 +63,7 @@ Label images with “Accept”, “Hold” and “Reject” at the bottom right 
 - Numbering: the list's “⋯ → Renumber in order”, or right-click. Numbers follow the list order, with one more digit than the largest number (00–02 for three images).
 - Remove duplicates: the list's “⋯ → Remove duplicates”. Of identical images, all but the one you keep go to the Recycle Bin.
 - Remove from the list: right-click → “Remove from list”. The file is not deleted; Ctrl+R (or ⟳ in the folder row) brings it back.
+- Delete images: right-click → “Delete images…”. After asking, the image files are moved to the Recycle Bin (restore them from there).
 - Find: type part of a file name or note in the search box. Change the number in “4 / 111” above the image and press Enter to go to that image.
 
 ## Moving between folders

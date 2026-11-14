@@ -7,7 +7,7 @@ Sumīre 由个人开发。不一定能对所有内容回复或处理，但会按
 | 信息泄露、安全 | [SECURITY.md](SECURITY.md)（非公开报告） | 最优先 |
 | 保存、元数据删除、重命名、文件丢失等问题 | GitHub 的 Issue | 优先 |
 | 显示或操作的问题 | GitHub 的 Issue | 依次处理 |
-| 功能需求 | GitHub 的 Issue | 符合开发计划方针的会考虑 |
+| 功能需求 | GitHub 的 Issue | 视内容考虑 |
 | 使用方法的问题 | 请先阅读帮助（F1）和[常见问题](../../sumire/help_docs/zh_CN/FAQ.md) | 用于改进说明 |
 
 ## 报告问题时

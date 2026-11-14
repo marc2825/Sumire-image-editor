@@ -153,3 +153,23 @@ def test_upstream_licence_texts_may_name_their_authors(tmp_path):
     (root / "licenses/Example/LICENSE.txt").write_text("Copyright Jean-loup Gailly jloup" + "@gzip.org\n", encoding="utf-8")
     report = export(root, tmp_path / "public" / "Sumire-image-editor")
     assert "licenses/Example/LICENSE.txt" in report["included"]
+
+
+def test_readme_pictures_are_published_only_without_metadata(tmp_path):
+    from PIL import Image, PngImagePlugin
+    from scripts.export_public import audit
+    root = source(tmp_path)
+    (root / "docs/images").mkdir(parents=True)
+    Image.new("RGB", (8, 8), "#8877aa").save(root / "docs/images/teaser.png")
+    target = tmp_path / "public" / "Sumire-image-editor"
+    report = export(root, target)
+    assert "docs/images/teaser.png" in report["included"]
+    assert (target / "docs/images/teaser.png").read_bytes() == (root / "docs/images/teaser.png").read_bytes()
+    assert not [problem for problem in audit(target)["problems"] if "teaser" in problem]
+    info = PngImagePlugin.PngInfo()
+    info.add_text("parameters", "synthetic prompt")
+    Image.new("RGB", (8, 8)).save(root / "docs/images/teaser.png", pnginfo=info)
+    with pytest.raises(ValueError, match="image_metadata"):
+        export(root, target)
+    Image.new("RGB", (8, 8)).save(root / "docs/other.png")
+    assert "docs/other.png: image" in audit(root)["problems"]

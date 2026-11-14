@@ -19,6 +19,7 @@ from PIL import Image, ImageCms
 
 from .imaging import ImageProblem, MAX_INPUT_BYTES, clean_pixels, validate_opened
 from .labels import label_key
+from . import provenance
 from .storage import connect_owned, record_path, SCHEMAS
 from .stealth import SIGNATURES, stealth_channels
 
@@ -27,8 +28,14 @@ PNG_PIXELS = {b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"bKGD", b"hIST", b"a
 WEBP_PIXELS = {b"VP8 ", b"VP8L", b"VP8X", b"ALPH", b"ANIM", b"ANMF"}
 
 
-def categories(image):
-    """Fixed category names for an opened, loaded image; never keys or values."""
+C2PA = tr("C2PA（コンテンツ認証情報）")
+
+
+def categories(image, path=None):
+    """Fixed category names for an opened, loaded image; never keys or values.
+
+    ``path`` (the image's file) is read for the parts Pillow does not keep, such as C2PA.
+    """
     found = set()
     exif = image.getexif()
     if exif:
@@ -56,6 +63,14 @@ def categories(image):
         found.add("XMP")
     if keys - STRUCTURAL - {"exif", "icc_profile", "xmp", "xml:com.adobe.xmp"}:
         found.add(tr("テキスト・その他の付加情報"))
+    store = provenance.file_store(path, image.format) if path is not None else None
+    if store:
+        found.add(C2PA)
+    xmp = image.info.get("xmp") or image.info.get("XML:com.adobe.xmp")
+    if (store and provenance.store_is_ai(store)) or provenance.AI_SOURCES & set(provenance.xmp_sources(xmp)):
+        found.add(tr("AI生成の表示"))
+    if xmp_has_location(xmp) or (store and b"exif:GPSLatitude" in store):
+        found.add(tr("GPS・位置情報"))
     return sorted(found)
 
 
@@ -74,7 +89,7 @@ def inspect_metadata(path):
         with Image.open(path) as image:
             validate_opened(image)
             image.load()
-            found = categories(image)
+            found = categories(image, path)
         if file_digest(path) != digest:
             raise ImageProblem(tr("確認中にファイルが変更されました。もう一度確認してください。"))
         return found
@@ -439,9 +454,31 @@ def _part_without_pictures(kind, value, format):
     return None  # MPF, FlashPix, extended XMP, C2PA and other segments
 
 
+def _is_c2pa(kind, value, format):
+    return (format == "PNG" and kind == b"caBX") or (format == "WEBP" and kind == b"C2PA") or (
+        format == "JPEG" and kind == b"\xeb" and value[:2] == b"JP")
+
+
+def _keepable_c2pa(parts, format):
+    """A C2PA manifest is kept whole or not at all, and never when it holds a thumbnail.
+
+    Editing breaks its signature (verifiers then report a change), but what it records stays readable.
+    """
+    found = [value for kind, value in parts if _is_c2pa(kind, value, format)]
+    if not found:
+        return False
+    store = provenance.jpeg_segments_store(found) if format == "JPEG" else provenance._extract(found[0])
+    return store is not None and not provenance.has_thumbnail(store)
+
+
 def without_pictures(parts, format):
     result = []
+    c2pa = _keepable_c2pa(parts, format)
     for kind, value in parts:
+        if _is_c2pa(kind, value, format):
+            if c2pa:
+                result.append((kind, value))
+            continue
         value = _part_without_pictures(kind, value, format)
         if value is not None and _is_metadata(kind, value, format):
             result.append((kind, value))
@@ -671,6 +708,111 @@ def _stealth_text(image):
     return result
 
 
+WHEN_WHERE = tr("日時・場所")
+
+
+def _xmp_value(text, name):
+    """An XMP property written as an attribute or as an element."""
+    pattern = re.escape(name)
+    match = re.search(rf'{pattern}="([^"]*)"|<{pattern}>([^<]*)</{pattern}>', text)
+    return (match.group(1) if match.group(1) is not None else match.group(2)).strip() if match else None
+
+
+def _xmp_degrees(value):
+    """XMP GPS coordinates: 「35,42.2058N」 or 「35,42,12.35N」 (or a plain number)."""
+    match = re.fullmatch(r"(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?))?([NSEW])", (value or "").strip())
+    if match:
+        number = float(match.group(1)) + float(match.group(2)) / 60 + float(match.group(3) or 0) / 3600
+        return -number if match.group(4) in {"S", "W"} else number
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _exif_time(value, offset=None):
+    """「2025:10:18 10:12:36」 as 「2025-10-18 10:12:36」, with its UTC offset when recorded."""
+    text = (value.decode("ascii", "replace") if isinstance(value, bytes) else str(value)).strip("\0 ")
+    match = re.fullmatch(r"(\d{4}):(\d{2}):(\d{2})[ T](\d{2}:\d{2}:\d{2})", text)
+    text = f"{match.group(1)}-{match.group(2)}-{match.group(3)} {match.group(4)}" if match else text
+    offset = (offset.decode("ascii", "replace") if isinstance(offset, bytes) else str(offset or "")).strip("\0 ")
+    return f"{text} {offset}" if offset else text
+
+
+def _iso_text(value):
+    moment = provenance.parse_time(value)
+    return provenance.local_text(moment) if moment else value.replace("T", " ")
+
+
+def when_and_where(exif, xmp, store, raw, format):
+    """(item, text) rows saying when and where the image was taken or made, from every source found.
+
+    Each value names its source (EXIF, XMP, PNG, C2PA); the first source found for an item is shown.
+    """
+    rows = {}
+
+    def add(item, value, source):
+        if value and item not in rows:
+            rows[item] = tr("{value}（{source}）").format(value=value, source=source)
+
+    ifd = exif.get_ifd(0x8769) if exif else {}
+    gps = exif.get_ifd(0x8825) if exif else {}
+    if ifd.get(0x9003):
+        add(tr("撮影日時"), _exif_time(ifd[0x9003], ifd.get(0x9011)), "EXIF")
+    elif ifd.get(0x9004):
+        add(tr("撮影日時"), _exif_time(ifd[0x9004], ifd.get(0x9012)), "EXIF")
+    if exif and exif.get(0x0132):
+        add(tr("更新日時"), _exif_time(exif[0x0132], ifd.get(0x9010)), "EXIF")
+    if gps:
+        latitude, longitude = _gps_degrees(gps.get(2, ()), gps.get(1)), _gps_degrees(gps.get(4, ()), gps.get(3))
+        if latitude is not None and longitude is not None:
+            add(tr("緯度・経度"), f"{latitude:.6f}, {longitude:.6f}", "EXIF GPS")
+        try:
+            altitude = float(gps[6]) * (-1 if gps.get(5) in (1, b"\x01") else 1)
+            add(tr("高度"), f"{altitude:.1f} m", "EXIF GPS")
+        except (KeyError, TypeError, ValueError, ZeroDivisionError):
+            pass
+        if gps.get(29) and gps.get(7):
+            try:
+                clock = ":".join(f"{int(float(part)):02d}" for part in gps[7])
+                add(tr("GPSの日時（UTC）"), f"{_exif_time(gps[29]).replace(':', '-')} {clock}", "EXIF GPS")
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
+    if exif:
+        camera = " ".join(str(exif[tag]).strip("\0 ") for tag in (0x010F, 0x0110) if exif.get(tag))
+        add(tr("カメラ"), camera, "EXIF")
+    text = xmp.decode("utf-8", "replace") if isinstance(xmp, bytes) else str(xmp or "")
+    if text:
+        for item, names in ((tr("撮影日時"), ("exif:DateTimeOriginal", "photoshop:DateCreated")), (tr("作成日時"), ("xmp:CreateDate",)),
+                            (tr("更新日時"), ("xmp:ModifyDate",))):
+            value = next(filter(None, (_xmp_value(text, name) for name in names)), None)
+            add(item, value and _iso_text(value), "XMP")
+        latitude, longitude = _xmp_degrees(_xmp_value(text, "exif:GPSLatitude")), _xmp_degrees(_xmp_value(text, "exif:GPSLongitude"))
+        if latitude is not None and longitude is not None:
+            add(tr("緯度・経度"), f"{latitude:.6f}, {longitude:.6f}", "XMP")
+    info = provenance.read_manifest(store) if store else None
+    if info:
+        add(tr("撮影日時"), info["exif"].get("exif:DateTimeOriginal") and _iso_text(info["exif"]["exif:DateTimeOriginal"]), "C2PA")
+        latitude = _xmp_degrees(info["exif"].get("exif:GPSLatitude"))
+        longitude = _xmp_degrees(info["exif"].get("exif:GPSLongitude"))
+        if latitude is not None and longitude is not None:
+            add(tr("緯度・経度"), f"{latitude:.6f}, {longitude:.6f}", "C2PA")
+        add(tr("作成日時"), info["created"] and provenance.local_text(info["created"]), "C2PA")
+        add(tr("署名の日時"), info["signed"] and provenance.local_text(info["signed"]), tr("C2PA・タイムスタンプ"))
+    if format == "PNG":
+        for kind, payload in _parts(raw, format):
+            if kind == b"tIME" and len(payload) == 7:
+                year, month, day, hour, minute, second = struct.unpack(">HBBBBB", payload)
+                add(tr("更新日時"), f"{year:04d}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d} UTC", "PNG")
+    order = [tr("撮影日時"), tr("作成日時"), tr("更新日時"), tr("署名の日時"), tr("緯度・経度"), tr("高度"), tr("GPSの日時（UTC）"), tr("カメラ")]
+    return [(item, rows[item]) for item in order if item in rows]
+
+
+def xmp_has_location(xmp):
+    text = xmp.decode("utf-8", "replace") if isinstance(xmp, bytes) else str(xmp or "")
+    return "exif:GPSLatitude" in text
+
+
 def describe_metadata(path):
     """Every metadata entry of ``path`` as (category, item, content) for display.
 
@@ -724,6 +866,7 @@ def describe_metadata(path):
                 entries.append((tr("生成情報") if isinstance(comment, str) and '"prompt"' in comment else tr("コメント"), tr("コメント"), _text(comment)))
             xmp = image.info.get("xmp") or image.info.get("XML:com.adobe.xmp")
             if xmp:
+                entries.extend(("XMP", tr("作成の方法（IPTC）"), provenance.source_text(code)) for code in provenance.xmp_sources(xmp))
                 entries.append(("XMP", tr("XMPデータ"), _text(xmp)))
             profile = image.info.get("icc_profile")
             if profile:
@@ -734,6 +877,11 @@ def describe_metadata(path):
                 entries.append((tr("ICCカラープロファイル"), tr("プロファイル名"), tr("{value}（{count:,}バイト）").format(value=name or tr('不明'), count=len(profile))))
             for name, text in _stealth_text(image):
                 entries.append((tr("Stealth PNGInfo（画素に埋め込まれた情報）"), name, text))
+            store = provenance.raw_store(raw, format)
+            if store:
+                entries.extend((C2PA, item, text) for item, text in provenance.describe_store(store))
+            # When and where first: the facts most often worth checking before sharing.
+            entries[:0] = [(WHEN_WHERE, item, text) for item, text in when_and_where(exif, xmp, store, raw, format)]
             if format in {"PNG", "JPEG", "WEBP"}:
                 understood = {"PNG": {b"tEXt", b"zTXt", b"iTXt", b"eXIf", b"iCCP", b"gAMA", b"cHRM", b"sRGB", b"pHYs", b"tIME"},
                               "WEBP": {b"EXIF", b"XMP ", b"ICCP"},
@@ -741,6 +889,8 @@ def describe_metadata(path):
                 for kind, payload in _parts(raw, format):
                     if not _is_metadata(kind, payload, format) or kind in understood:
                         continue
+                    if store and (kind in {b"caBX", b"C2PA"} or (kind == b"\xeb" and payload[:2] == b"JP")):
+                        continue  # read above
                     if format == "PNG" and kind == b"tIME":
                         continue
                     label = tr("APP{value}セグメント").format(value=kind[0] - 0xE0) if format == "JPEG" and 0xE0 <= kind[0] <= 0xEF else (

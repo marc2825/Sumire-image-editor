@@ -294,8 +294,6 @@ class SettingsDialog(QDialog):
         layout.addWidget(note(tr("拡大中に、画像全体のどこを表示しているかを右下に表示します。")))
         layout.addWidget(self.mirror(window.watch_action))
         layout.addWidget(note(tr("開いているフォルダーに新しく追加された画像を、一覧へ自動で加えます。")))
-        layout.addWidget(self.mirror(window.auto_advance))
-        layout.addWidget(note(tr("仕分けのラベルを付けると、自動で次の画像へ進みます。")))
         self.quit_confirmation = QCheckBox(tr("終了するときに確認を表示する"))
         self.quit_confirmation.setChecked(window.preferences.data.get("hide_quit_confirmation") is not True)
         self.quit_confirmation.toggled.connect(self.quit_confirmation_changed)
@@ -304,6 +302,16 @@ class SettingsDialog(QDialog):
         fullscreen = QPushButton(tr("全画面表示に切り替え"))
         fullscreen.clicked.connect(lambda: (self.accept(), window.editor_actions["fullscreen"].trigger()))
         layout.addWidget(fullscreen, 0, Qt.AlignmentFlag.AlignLeft)
+        self.heading(layout, tr("仕分け"))
+        layout.addWidget(self.mirror(window.auto_advance))
+        layout.addWidget(note(tr("仕分けのラベルを付けると、自動で次の画像へ進みます。")))
+        # Short here; the whole rule is in the tooltip (also in the ラベル menu).
+        self.auto_sort = self.mirror(window.auto_sort_action)
+        self.auto_sort.setToolTip(window.auto_sort_action.toolTip())
+        layout.addWidget(self.auto_sort)
+        self.auto_sort_note = note(tr("採用・保留・不採用のフォルダーがある場所では、ラベルを付けた画像をすぐそのフォルダーへ移します。"))
+        self.auto_sort_note.setToolTip(window.auto_sort_action.toolTip())
+        layout.addWidget(self.auto_sort_note)
 
     def novelai_page(self, layout):
         layout.addWidget(self.mirror(self.window.novelai_adjust))

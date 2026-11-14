@@ -1,4 +1,4 @@
-Sumīre 1.1.0 / Windows 11 x64
+Sumīre 1.1.1 / Windows 11 x64
 
 はじめに
 ZIPをすべて展開し、sumire.exe をダブルクリックします。Pythonは要りません。

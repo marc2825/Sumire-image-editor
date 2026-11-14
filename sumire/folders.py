@@ -14,7 +14,7 @@ import sqlite3
 
 from .export import Cancelled, check_cancel, file_digest
 from .imaging import ImageProblem
-from .labels import label_key
+from .labels import REVIEW_LABELS, label_folder_names, label_key
 from .locking import image_locks
 from .storage import SCHEMAS, TABLES, connect_owned, record_path
 
@@ -40,6 +40,40 @@ def subfolders(folder: Path) -> list[Path]:
     except OSError:
         return []
     return sorted(found, key=lambda path: (filename_key(path), path.name))
+
+
+def _folder_label(folder: Path):
+    """(label, language index) when ``folder`` is named like a label folder (採用 / Accept / 采用…)."""
+    name = folder.name.casefold()
+    for label, names in label_folder_names().items():
+        for number, text in enumerate(names):
+            if name == text.casefold():
+                return label, number
+    return None
+
+
+def label_folder_target(path: Path, label: str) -> Path | None:
+    """The folder 「ラベルのフォルダーへ自動で振り分ける」 moves ``path`` into for ``label``, or None.
+
+    It sorts only where label folders already exist: inside the image's folder, or
+    beside it when the image is in one of them (from 保留 to the 採用 next to it).
+    A label folder still missing there is named like the others (their language).
+    """
+    here = Path(path).parent
+    found = [(folder, _folder_label(folder)) for folder in subfolders(here)]
+    root = here
+    if not any(match for _folder, match in found) and _folder_label(here):
+        root = here.parent
+        found = [(folder, _folder_label(folder)) for folder in subfolders(root)]
+    found = [(folder, match) for folder, match in found if match]
+    if not found:
+        return None
+    target = next((folder for folder, (value, _number) in found if value == label), None)
+    if target is None:
+        names = label_folder_names()[label]
+        number = found[0][1][1]
+        target = root / (names[number] if number < len(names) else REVIEW_LABELS[label])
+    return None if target == here else target
 
 
 def create_folder(parent: Path, name: str) -> Path:

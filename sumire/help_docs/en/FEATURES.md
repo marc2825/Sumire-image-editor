@@ -15,6 +15,7 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | Rename | Double-click the image name, or F2. For numbering, the list's “⋯ → Renumber in order” or right-click (zero-padded: 00, 01…) |
 | Add a note | Right-click in the list → “Note” |
 | Remove from the list | Right-click → “Remove from list” (the file is not deleted; Ctrl+R or ⟳ in the folder row brings it back) |
+| Delete images | Right-click → “Delete images…” (after asking, moves them to the Recycle Bin) |
 | Remove duplicates | The list's “⋯ → Remove duplicates”. All but the one you keep go to the Recycle Bin |
 
 ## Hide and adjust
@@ -39,6 +40,7 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | --- | --- |
 | Label images | “Accept”, “Hold”, “Reject” at the bottom right, or the 1, 2, 3 keys. Applies to every selected image |
 | Sort into label folders | “Export by label” above the list (moves into a folder per label; can also copy, and renumber) |
+| Sort as you label | Right-click → “Label → Sort into label folders automatically” (where Accept / Hold / Reject folders exist) |
 | Remove all labels | “Reset sorting” above the list |
 | Return the list to its first state | The list's “⋯ → Reset the whole list” (this session's overwrites, labels, notes, order, filters) |
 | Undo organising | The arrow above the list (Ctrl+Alt+Z). Undoes labels, order, names, notes and moves |

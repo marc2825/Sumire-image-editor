@@ -40,6 +40,8 @@ By default, metadata is kept when you save edits. Just before saving, the origin
 
 The saved image is read back to check its size, format and single frame, and that no metadata or Stealth PNGInfo remains. Its file structure is checked too: PNG may contain only `IHDR`, `IDAT` and `IEND`; JPEG only what is needed for decoding plus `JFIF`; WebP only `VP8`, `VP8L`, `VP8X` and `ALPH`. If anything is wrong, saving is abandoned.
 
+C2PA (Content Credentials) added by image generators is therefore removed too. Watermarks hidden in the pixels themselves (such as SynthID) are not metadata and cannot be removed.
+
 New files are created in a way that never overwrites existing files (hard links). **On Windows, a local NTFS folder is recommended.** Destinations that do not support hard links fail to save, and no incomplete file is left.
 
 “Metadata: none” means these checks found nothing. It does not guarantee that no unknown embedding method was used.

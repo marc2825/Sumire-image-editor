@@ -103,6 +103,7 @@ Label images with “Accept”, “Hold” and “Reject” at the bottom right 
 - Labels are saved at once and survive restarts, saving, renaming and moving between folders. They never change the image.
 - The filter button shows images by label. Counts appear below the list.
 - With “Next after labelling” on, Sumīre moves to the next image after each label.
+- With “Sort into label folders automatically” on (right-click → “Label”, or Settings → Display and import → Sorting), a labelled image moves into its label folder at once wherever Accept / Hold / Reject folders exist: into the one inside the image's folder, or, when the image is in a label folder, into the one beside it (Accept inside “Hold” moves it to “Accept”). A missing label folder is created; removing a label never moves the image. “Undo the last organising step” moves it back.
 - “Reset sorting” removes every label in the tab.
 - The list's “⋯ → Reset the whole list” restores the originals of images overwritten in this session (when they were kept), clears the shown image's edits and mask, and clears labels, notes, order, filters and search. Edits saved before this session, and overwrites without a kept original, cannot be undone.
 - “Export by label” sorts the images of Accept, Hold, Reject or all labels into folders named after the labels. By default it creates those folders in the open folder, renames the images 00, 01… in list order and **moves the original files** there (labels and notes move with them; “Undo the last organising step” moves them back; save unsaved edits first).
@@ -117,6 +118,7 @@ Label images with “Accept”, “Hold” and “Reject” at the bottom right 
 - **Numbering**: the list's “⋯ → Renumber in order” (all) or right-click (selected). Numbers start at 0 in list order, with one more digit than the largest number (00–02 for 3 images, 000–010 for 11). The old and new names are shown before renaming.
 - **Notes**: right-click → “Note”. Up to 4,000 characters; hover over an image in the list to read it.
 - **Remove from list**: right-click. The file is not deleted; Ctrl+R brings it back.
+- **Delete images**: right-click → “Delete images…”. After asking, the files go to the Recycle Bin (never deleted outright).
 - **Remove duplicates**: the list's “⋯ → Remove duplicates”. For each group of identical images, choose one to keep; the rest go to the Recycle Bin.
 - **Compare**: select 2–6 images, right-click → “Compare side by side”. Zoom is per image; “Link zoom and position” keeps them together.
 - **Undo the last organising step**: the arrow above the list (Ctrl+Alt+Z). Undoes labels, order, names, notes and folder moves, newest first. A rename is not undone if the image changed after it.
@@ -173,7 +175,7 @@ Open them with the gear at the top right and choose a topic on the left. “Rese
 | Save | Auto-save, overwriting, metadata for restoring, format and destination for separate-folder saves, JPEG quality (1–100, default 95) |
 | Records | Switching where the records are kept, and deleting them |
 | Shortcuts | Changing keys |
-| Display and import | Display language, navigator, picking up images added to the folder, next after labelling, confirmation when quitting, full screen |
+| Display and import | Display language, navigator, picking up images added to the folder, next after labelling, sorting into label folders automatically, confirmation when quitting, full screen |
 | NovelAI | Cropping and shrinking before handing over |
 | Windows | Adding and removing the right-click entry |
 | About | Version, licences, details of the last error |

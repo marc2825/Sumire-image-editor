@@ -97,7 +97,7 @@ def load_image(path: Path, found: list | None = None) -> Image.Image:
                 opened.load()
                 if found is not None:
                     from .metadata import categories
-                    found.extend(categories(opened))
+                    found.extend(categories(opened, path))
                 # Stealth data follows the encoded pixel order, so remove it
                 # before Orientation/ICC transforms or any editing can hide its header.
                 image = ImageOps.exif_transpose(remove_stealth(opened))

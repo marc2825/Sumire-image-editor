@@ -8,7 +8,8 @@ from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QPainter, QPalette
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QSpinBox, QStackedWidget, QStyle,
-    QStyledItemDelegate, QStyleOptionComboBox, QStyleOptionViewItem, QStylePainter, QToolButton, QVBoxLayout, QWidget,
+    QStyledItemDelegate, QStyleOptionButton, QStyleOptionComboBox, QStyleOptionViewItem, QStylePainter, QToolButton,
+    QVBoxLayout, QWidget,
 )
 
 from .icons import app_mark, icon
@@ -120,22 +121,82 @@ def fact_table(rows, notes=()) -> str:
     return text + "".join(f"<p style='margin:10px 0 0 0'>{html_text(note)}</p>" for note in notes if note)
 
 
-def key_hint(text: str = "") -> QLabel:
-    """A small, faint label showing a shortcut key beside (or inside) a button."""
-    label = QLabel(text)
-    label.setObjectName("keyHint")
-    label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-    return label
+class KeyHint(QLabel):
+    """A button's shortcut key right after its text, small and underlined: 消しゴム（E）.
+
+    The button still draws its own icon and text, with its colours for hover, checked and
+    disabled. Extra right padding on the button makes room for the key (so a centred text
+    and its key stay centred together), and this label is moved to just after the text.
+    """
+
+    ICON_SPACING = 4  # Qt's fixed gap between a button's icon and its text
+
+    def __init__(self, button):
+        super().__init__(button)
+        self.button = button
+        self.key = ""
+        self.padding = None
+        self.setObjectName("keyHint")
+        self.setTextFormat(Qt.TextFormat.RichText)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.hide()
+        button.installEventFilter(self)
+        button.toggled.connect(lambda *_args: self.place())
+
+    def pad_right(self, pixels):
+        # With a selector, so the padding is not passed on to this label too.
+        self.button.setStyleSheet("" if pixels is None else f"{self.button.metaObject().className()} {{ padding-right: {pixels}px; }}")
+
+    def set_key(self, key: str):
+        if self.padding is None:
+            # The button's own right padding from the style sheet, measured once it is in the window.
+            natural = self.button.sizeHint().width()
+            self.pad_right(0)
+            self.padding = natural - self.button.sizeHint().width()
+        self.key = key
+        before, _field, after = tr("（{key}）").partition("{key}")
+        # Rich text drops a leading space (English " ({key})"), so it is kept as &nbsp;.
+        self.setText(f"{html_text(before).replace(' ', '&nbsp;')}<u>{html_text(key)}</u>{html_text(after)}" if key else "")
+        self.adjustSize()
+        self.pad_right(self.padding + self.width() if key else None)
+        self.setVisible(bool(key))
+        self.place()
+
+    def eventFilter(self, watched, event):
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.StyleChange, QEvent.Type.FontChange, QEvent.Type.Show):
+            self.place()
+        return False
+
+    def place(self):
+        button = self.button
+        if not self.key:
+            return
+        metrics = button.fontMetrics()
+        label = metrics.horizontalAdvance(button.text())
+        if not button.icon().isNull():
+            label += button.iconSize().width() + self.ICON_SPACING
+        if isinstance(button, QToolButton):
+            # Icon and text sit at the left of a button as wide as they are, plus two spaces Qt adds.
+            natural = label + 2 * metrics.horizontalAdvance(" ")
+            end = (button.width() - self.width() - natural) // 2 + label
+        else:
+            option = QStyleOptionButton()
+            option.initFrom(button)
+            contents = button.style().subElementRect(QStyle.SubElement.SE_PushButtonContents, option, button)
+            end = contents.x() + (contents.width() + label) // 2
+            if button.isChecked():
+                # A checked toggle is drawn bold (theme: QPushButton#toggle:checked), from the same start.
+                bold = QFont(button.font())
+                bold.setBold(True)
+                end += max(0, QFontMetrics(bold).horizontalAdvance(button.text()) - metrics.horizontalAdvance(button.text()))
+        # On the same baseline as the button's text.
+        baseline = (button.height() - metrics.height()) // 2 + metrics.ascent()
+        self.move(end, baseline - QFontMetrics(self.font()).ascent())
 
 
-def attach_key_hint(button) -> QLabel:
-    """Show a key at the right edge inside ``button`` (which keeps its own text and icon)."""
-    hint = key_hint()
-    layout = QHBoxLayout(button)
-    layout.setContentsMargins(0, 0, 10, 0)
-    layout.addStretch(1)
-    layout.addWidget(hint)
-    return hint
+def attach_key_hint(button) -> KeyHint:
+    """Show the key of ``button`` right after its text; set it with ``set_key``."""
+    return KeyHint(button)
 
 
 def divider() -> QFrame:

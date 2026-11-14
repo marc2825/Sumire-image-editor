@@ -18,6 +18,7 @@ from .analysis import find_duplicates
 from .compare import ComparisonDialog
 from .backups import store as originals
 from .export import check_cancel, file_digest
+from .folders import label_folder_target
 from .icons import icon, swatch
 from .imaging import ImageProblem, load_image
 from .labels import REVIEW_LABELS, ReviewLabels
@@ -29,6 +30,14 @@ from .theme import TOKENS
 from .ui import Popover, SegmentComboBox, fact_table, html_text, repolish, section_label, tool_button
 
 MAX_COMPARE = 6
+AUTO_SORT_TIP = tr(
+    "採用・保留・不採用のフォルダーがある場所で、ラベルを付けた画像をすぐそのフォルダーへ移します。\n"
+    "・画像のフォルダーの中にラベルのフォルダーがあるとき：その中の、付けたラベルのフォルダーへ\n"
+    "・画像がラベルのフォルダーの中にあるとき：隣の、付けたラベルのフォルダーへ（例：「保留」の中で採用にすると「採用」へ）\n"
+    "・まだないラベルのフォルダーは作ります。ラベルのフォルダーが1つもない場所では移しません。\n"
+    "・ラベルを外したときは移しません。\n"
+    "・フォルダー名は日本語・英語・中国語のどれでも認識します（採用 / Accept / 采用 など）。\n"
+    "・画像ファイルはそのまま移り、ラベルとメモも一緒に移ります。「直前の整理操作を戻す」で戻せます。")
 
 
 def tint_combo(combo):
@@ -268,6 +277,7 @@ class Workbench:
             ("save_as", tr("別名で保存…"), self.save_as),
             ("save_selected", tr("メタデータを削除して保存"), self.save_selected),
             ("remove_selected", tr("一覧から外す"), self.remove_selected),
+            ("delete_selected", tr("画像を削除…"), self.delete_selected),
             ("number_selected", tr("選択画像を連番へ"), lambda: self.number_images(self.selected_paths())),
             ("note", tr("メモ…"), self.edit_note),
             ("undo_organize", tr("直前の整理操作を戻す\tCtrl+Alt+Z"), self.undo_organization),
@@ -286,6 +296,7 @@ class Workbench:
             action.triggered.connect(lambda *_args, function=callback: function())
             self.workflow_actions[key] = action
         self.workflow_actions["remove_selected"].setToolTip(tr("元ファイルは残したまま、このタブの一覧から外します。再読み込みで戻せます。"))
+        self.workflow_actions["delete_selected"].setToolTip(tr("選んだ画像ファイルをごみ箱へ移します。実行前に確認します。"))
         self.workflow_actions["save_as"].setToolTip(tr("表示中の画像を、名前・形式を指定して新しいファイルに保存します（メタデータなし）。"))
         self.workflow_actions["duplicates"].setToolTip(tr("内容が完全に同じ画像を探し、残す1枚を選んで残りをごみ箱へ移します。実行前に確認します。"))
         self.workflow_actions["collage"].setToolTip(tr("選択した2枚以上の画像を、並べ方を選んで1枚にまとめます。"))
@@ -301,8 +312,14 @@ class Workbench:
         self.watch_action.setCheckable(True)
         self.watch_action.setChecked(True)
         self.label_menu = QMenu(tr("ラベル"), self)
+        self.label_menu.setToolTipsVisible(True)
         for action in self.label_actions.values():
             self.label_menu.addAction(action)
+        self.auto_sort_action = QAction(tr("ラベルのフォルダーへ自動で振り分ける"), self)
+        self.auto_sort_action.setCheckable(True)
+        self.auto_sort_action.setToolTip(AUTO_SORT_TIP)
+        self.label_menu.addSeparator()
+        self.label_menu.addAction(self.auto_sort_action)
         # Whole-tab work that has no button of its own (一括削除・リセット・採用の書き出し・
         # 整理を戻す are buttons in the panel header).
         menu = self.library_menu
@@ -320,7 +337,8 @@ class Workbench:
         for item in (self.workflow_actions["save_as"], self.workflow_actions["save_selected"],
                      self.workflow_actions["convert_selected"], self.workflow_actions["compress_selected"], None,
                      self.workflow_actions["compare"], self.workflow_actions["collage"], self.workflow_actions["number_selected"], None,
-                     self.rename_button, self.workflow_actions["note"], None, self.workflow_actions["remove_selected"]):
+                     self.rename_button, self.workflow_actions["note"], None, self.workflow_actions["remove_selected"],
+                     self.workflow_actions["delete_selected"]):
             menu.addSeparator() if item is None else menu.addAction(item)
 
     def remove_selected(self):
@@ -344,6 +362,32 @@ class Workbench:
         if not accepted or any(path not in self.model.rows for path in paths):
             return
         action = lambda: self.exclude_from_list(paths)
+        if self.document and self.document.path in paths:
+            self.guard(action)
+        else:
+            action()
+
+    def delete_selected(self):
+        """Move the selected images (or the shown one) to the recycle bin, after a confirmation."""
+        paths = [path for path in self.selected_or_current() if path in self.model.rows]
+        if not paths or self.busy() or self.saving:
+            return
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(tr("画像を削除"))
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(tr("画像 {count} 枚をごみ箱へ移しますか？").format(count=len(paths)))
+        dialog.setInformativeText(tr("画像ファイルをごみ箱へ移し、一覧から外します。戻すときは、ごみ箱から元に戻してください。\n"
+                                  "ごみ箱のない場所（ネットワーク上のフォルダーなど）の画像は、削除せずにそのまま残します。"))
+        dialog.setDetailedText("\n".join(str(path) for path in paths))
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        dialog.button(QMessageBox.StandardButton.Ok).setText(tr("ごみ箱へ移す"))
+        dialog.button(QMessageBox.StandardButton.Cancel).setText(tr("キャンセル"))
+        dialog.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        dialog.setEscapeButton(QMessageBox.StandardButton.Cancel)
+        if not self.confirm_dialog(dialog) or any(path not in self.model.rows for path in paths):
+            return
+        action = lambda: self.trash_images(paths, tr("ごみ箱へ移しました · {count}枚"))
         if self.document and self.document.path in paths:
             self.guard(action)
         else:
@@ -468,7 +512,7 @@ class Workbench:
         self.export_accepted_button.setEnabled(labelled)
         for key in ("duplicates", "compare", "convert_all", "compress_all"):
             self.workflow_actions[key].setEnabled(ready)
-        for key in ("save_selected", "number_selected", "remove_selected", "convert_selected", "compress_selected"):
+        for key in ("save_selected", "number_selected", "remove_selected", "delete_selected", "convert_selected", "compress_selected"):
             self.workflow_actions[key].setEnabled(ready and bool(selected or self.document))
         self.workflow_actions["save_as"].setEnabled(ready and self.document is not None)
         self.workflow_actions["collage"].setEnabled(ready and len(selected) >= 2)
@@ -587,10 +631,22 @@ class Workbench:
             successor = next((path for path in visible[visible.index(current) + 1:] if path not in paths), None)
         self.write_labels(dict.fromkeys(paths, label), before)
         if all(self.model.labels.get(path) == label for path in paths):
+            targets = self.label_folder_targets(paths, label)
+            if targets:
+                # Moving the shown image away also moves on to the next one.
+                self.move_to_folders(targets, create=True)
+                return
             if len(paths) == 1 and self.auto_advance.isChecked() and successor:
                 self.guard(lambda: self.ensure_visible_current(successor))
             elif current not in self.visible_paths():
                 self.guard(lambda: self.ensure_visible_current(successor))
+
+    def label_folder_targets(self, paths, label):
+        """{path: label folder} when 「ラベルのフォルダーへ自動で振り分ける」 is on (never for removing a label)."""
+        if label is None or not self.auto_sort_action.isChecked():
+            return {}
+        targets = {path: label_folder_target(path, label) for path in paths}
+        return {path: folder for path, folder in targets.items() if folder is not None}
 
     def library_action_buttons(self):
         return (self.export_accepted_button, self.batch_delete_button, self.reset_labels_button)
@@ -1017,7 +1073,7 @@ class Workbench:
             else:
                 action()
 
-    def trash_images(self, paths):
+    def trash_images(self, paths, done=None):
         """Move files to the recycle bin (never delete permanently) and drop them from the list."""
         moved, failed = [], []
         for path in paths:
@@ -1028,7 +1084,7 @@ class Workbench:
         if moved:
             self.exclude_from_list(moved, message=False)
             self.excluded_paths.difference_update(moved)
-        text = tr("重複をごみ箱へ移しました · {count}枚").format(count=len(moved))
+        text = (done or tr("重複をごみ箱へ移しました · {count}枚")).format(count=len(moved))
         if failed:
             self.error(text + tr(" / 移せなかった画像 {count}枚（ごみ箱のない場所や、使用中のファイル）").format(count=len(failed)))
         else:
@@ -1088,7 +1144,7 @@ class Workbench:
             "mode": self.mode, "strengths": {**self.mode_strengths, self.mode: self.strength.value()}, "brush": self.brush.value(),
             "color": self.color, "shape": self.shape_combo.currentData(), "expansion": self.expansion.value(),
             "format": self.format_combo.currentData(), "output": str(self.output_folder) if self.custom_folder else None,
-            "auto_advance": self.auto_advance.isChecked(), "grid": self.view_combo.currentIndex(),
+            "auto_advance": self.auto_advance.isChecked(), "auto_sort": self.auto_sort_action.isChecked(), "grid": self.view_combo.currentIndex(),
             "thumbnail": self.thumbnail_size.value(), "watch": self.watch_action.isChecked(),
             "novelai_adjust": self.novelai_adjust.isChecked(),
             "show_mask": self.mask_toggle.isChecked(),
@@ -1146,6 +1202,7 @@ class Workbench:
         self.jpeg_quality = quality if type(quality) is int and 1 <= quality <= 100 else 95
         self.format_combo.setItemText(1, tr("JPEG · 品質{jpeg_quality}・白背景").format(jpeg_quality=self.jpeg_quality))
         for widget, key in [(self.auto, "auto"), (self.overwrite, "overwrite"), (self.auto_advance, "auto_advance"),
+                            (self.auto_sort_action, "auto_sort"),
                             (self.watch_action, "watch"), (self.novelai_adjust, "novelai_adjust"), (self.mask_toggle, "show_mask"),
                             (self.metadata_backup, "metadata_backup"), (self.inverse_action, "inverse_selection"),
                             (self.strip_metadata, "strip_metadata"), (self.keep_originals, "keep_originals"),

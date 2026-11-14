@@ -25,8 +25,34 @@ TOP_LEVEL = (".gitignore", "LICENSE", "README.md", "README.en.md", "README.zh-CN
 SOURCE_TYPES = {"sumire": {".py"}, "scripts": {".py", ".pyw", ".ps1", ".txt"},
                 "tests": {".py"}, "assets": {".ico"}, "licenses": {".txt", ".md"},
                 "sumire/help_docs": {".md"}, "sumire/locales": {".json"}, "sumire/fonts": {".otf", ".txt"},
-                "docs": {".md"}}
-BINARY = {".ico", ".otf"}
+                "docs": {".md", ".svg"}, "docs/images": {".png"}}
+BINARY = {".ico", ".otf", ".png"}
+# Pictures for the READMEs: published only as pixels, colour and size (no text, EXIF, C2PA…).
+DOC_IMAGES = "docs/images/"
+CLEAN_PNG = {b"IHDR", b"PLTE", b"tRNS", b"IDAT", b"IEND", b"sRGB", b"gAMA", b"cHRM", b"pHYs"}
+
+
+def clean_png(data):
+    """Whether a PNG holds nothing but its picture: no metadata chunk and no hidden data in the pixels."""
+    import io
+    import struct
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return False
+    offset = 8
+    while offset + 8 <= len(data):
+        size, kind = struct.unpack_from(">I4s", data, offset)
+        if kind not in CLEAN_PNG:
+            return False
+        offset += 12 + size
+        if kind == b"IEND":
+            break
+    if offset != len(data):
+        return False
+    from PIL import Image
+    from sumire.stealth import stealth_channels
+    with Image.open(io.BytesIO(data)) as image:
+        image.load()
+        return not stealth_channels(image)
 # Upstream licence texts name their authors' addresses; those notices must stay as they are.
 UPSTREAM_NOTICES = ("licenses/",)
 # Development records stay in the private repository.
@@ -106,7 +132,8 @@ def export(root, destination, *, check=False, private_terms=()):
     ignore = destination / ".gitignore"
     content[".gitignore"] = (ignore.read_bytes() if ignore.exists() else
                              content[".gitignore"] + PUBLIC_IGNORES.encode("utf-8"))
-    findings = []
+    findings = [f"{name}: image_metadata" for name, data in content.items()
+                if name.startswith(DOC_IMAGES) and name.endswith(".png") and not clean_png(data)]
     for name, data in content.items():
         if Path(name).suffix in BINARY:
             continue
@@ -188,7 +215,10 @@ def audit(destination, private_terms=()):
         if "__pycache__" in path.parts or name.endswith((".pyc", ".pyo")):
             problems.append(f"{relative}: cache")
         if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".bmp", ".tif", ".tiff", ".heic"}:
-            problems.append(f"{relative}: image")
+            if not (relative.startswith(DOC_IMAGES) and path.suffix == ".png"):
+                problems.append(f"{relative}: image")
+            elif not clean_png(path.read_bytes()):
+                problems.append(f"{relative}: image_metadata")
         if path.suffix in BINARY:
             continue
         try:

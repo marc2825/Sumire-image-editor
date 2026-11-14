@@ -7,7 +7,7 @@ Sumīre is developed by one person. Not everything can get a reply or a fix, but
 | Information leaks and security | [SECURITY.md](SECURITY.md) (report privately) | Highest |
 | Bugs in saving, metadata removal, renaming, or lost files | GitHub issues | High |
 | Display and usability bugs | GitHub issues | In turn |
-| Feature requests | GitHub issues | Considered if they fit the roadmap's direction |
+| Feature requests | GitHub issues | Considered case by case |
 | Questions about use | Please read the help (F1) and the [FAQ](../../sumire/help_docs/en/FAQ.md) first | Used to improve the documentation |
 
 ## When reporting a bug

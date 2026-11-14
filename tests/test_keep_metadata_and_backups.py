@@ -622,7 +622,7 @@ def test_settings_reset_returns_every_setting_to_its_first_value(qtbot, prompt_w
     monkeypatch.setattr(QMessageBox, "exec", lambda self: QMessageBox.StandardButton.Ok)
     dialog.reset_button.click()
     assert window.auto.isChecked() and window.overwrite.isChecked()
-    assert window.brush.value() == 90 and window.thumbnail_size.value() == window.default_settings["thumbnail"]
+    assert window.brush.value() == 60 and window.thumbnail_size.value() == window.default_settings["thumbnail"]
     assert list(window.presets) == list(DEFAULT_PRESETS)
     data = Preferences().data
     assert "hide_overwrite_notice" not in data and "presets" not in data and data["settings"]["overwrite"] is True

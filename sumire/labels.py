@@ -6,6 +6,7 @@ import hashlib
 import os
 import sqlite3
 from contextlib import closing
+from functools import lru_cache
 from pathlib import Path
 
 from .session import APPLICATION_ID
@@ -13,6 +14,17 @@ from .storage import record_path
 
 # In key order: 採用 1, 保留 2, 不採用 3.
 REVIEW_LABELS = {"accepted": tr("採用"), "pending": tr("保留"), "rejected": tr("不採用")}
+# The Japanese names are the keys of every language catalog.
+FOLDER_NAMES = {"accepted": "採用", "pending": "保留", "rejected": "不採用"}
+
+
+@lru_cache(maxsize=1)
+def label_folder_names() -> dict[str, list[str]]:
+    """{label: its name in each interface language}, as 「ラベルごとに書き出す」 names the folders."""
+    from .i18n import LANGUAGES, load_catalog
+    catalogs = [load_catalog(code) for code in LANGUAGES]
+    # One entry per language (even when two languages agree), so an index is a language.
+    return {label: [catalog.get(name, name) for catalog in catalogs] for label, name in FOLDER_NAMES.items()}
 
 
 def label_key(path: Path) -> str:

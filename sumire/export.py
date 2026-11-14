@@ -43,6 +43,14 @@ class HiddenMetadata(ImageProblem):
     """A previously saved image may need cleaning under the stricter verifier."""
 
 
+def _metadata_part(kind: bytes, format: str) -> HiddenMetadata | None:
+    """A part outside the clean-file allowlist that is metadata (C2PA, tIME, APPn…): the file kept its
+    metadata, which Pillow alone may not show. Anything else stays a malformed file."""
+    from .metadata import _is_metadata
+    payload = b"" if format != "JPEG" else b"\0"  # only the kind matters here
+    return HiddenMetadata(tr("保存画像に付加メタデータが見つかりました。")) if _is_metadata(kind, payload, format) else None
+
+
 def check_cancel(cancel: threading.Event | None) -> None:
     if cancel and cancel.is_set():
         raise Cancelled()
@@ -67,7 +75,7 @@ def _png_chunks(path: Path) -> tuple[str, ...]:
             length, kind = struct.unpack(">I4s", header)
             # Our RGBA writer emits only these structural/pixel chunks.
             if kind not in {b"IHDR", b"IDAT", b"IEND"}:
-                raise ImageProblem(tr("出力PNGに不要なチャンクが見つかりました。"))
+                raise _metadata_part(kind, "PNG") or ImageProblem(tr("出力PNGに不要なチャンクが見つかりました。"))
             chunks.append(kind.decode("ascii"))
             stream.seek(length + 4, 1)
             if kind == b"IEND":
@@ -128,7 +136,7 @@ def _jpeg_markers(path: Path) -> tuple[str, ...]:
                     raise ImageProblem(tr("出力JPEGに余分なデータがあります。"))
                 return tuple(markers)
             if code not in {0xC0, 0xC1, 0xC2, 0xC4, 0xDB, 0xDD, 0xDA, 0xE0}:
-                raise ImageProblem(tr("出力JPEGに付加メタデータまたは不明なマーカーが見つかりました。"))
+                raise _metadata_part(bytes([code]), "JPEG") or ImageProblem(tr("出力JPEGに付加メタデータまたは不明なマーカーが見つかりました。"))
             header = stream.read(2)
             if len(header) != 2:
                 raise ImageProblem(tr("JPEGが途中で切れています。"))
@@ -139,7 +147,7 @@ def _jpeg_markers(path: Path) -> tuple[str, ...]:
             if len(payload) != length - 2:
                 raise ImageProblem(tr("JPEGが途中で切れています。"))
             if code == 0xE0 and (len(payload) != 14 or not payload.startswith(b"JFIF\x00") or payload[12:] != b"\x00\x00"):
-                raise ImageProblem(tr("出力JPEGに不明なAPP0があります。"))
+                raise HiddenMetadata(tr("出力JPEGに不明なAPP0があります。"))
             markers.append(f"{code:02X}")
             scan = code == 0xDA
 
@@ -159,7 +167,7 @@ def _webp_chunks(path: Path) -> tuple[str, ...]:
                 raise ImageProblem(tr("WebPが途中で切れています。"))
             kind, length = struct.unpack("<4sI", raw)
             if kind not in {b"VP8 ", b"VP8L", b"VP8X", b"ALPH"}:
-                raise ImageProblem(tr("出力WebPに不要なチャンクが見つかりました。"))
+                raise _metadata_part(kind, "WEBP") or ImageProblem(tr("出力WebPに不要なチャンクが見つかりました。"))
             chunks.append(kind.decode("ascii"))
             stream.seek(length + (length % 2), 1)
         if stream.tell() != expected:

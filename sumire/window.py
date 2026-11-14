@@ -26,11 +26,11 @@ from .organize import pending_renames, recover_rename, rename_images, renamed_pa
 from .session import Receipts, source_key
 from .theme import TOKENS, dark_palette, stylesheet
 from .icons import icon, swatch
-from .ui import COPYRIGHT, ElidedLabel, fact_table, html_text, install_dialog_tint, slider_with_box, FilenameField, PositionField, Popover, ValueLabel, WelcomePage, ZoomField, attach_key_hint, describe_inputs, divider, key_hint, section_label, tool_button
+from .ui import COPYRIGHT, ElidedLabel, fact_table, html_text, install_dialog_tint, slider_with_box, FilenameField, PositionField, Popover, ValueLabel, WelcomePage, ZoomField, attach_key_hint, describe_inputs, divider, repolish, section_label, tool_button
 from .workers import Job
 from .workbench import Workbench
 from .explorer import configure_context_menu
-from .app_features import AppFeatures
+from .app_features import DEFAULT_PRESETS, AppFeatures
 from .masks import MaskStore
 from .shortcuts import ShortcutDialog, hint, load_bindings, matches
 from .editor_features import EditorFeatures
@@ -54,6 +54,8 @@ FILL_NOTE = tr("不透明度100%で、元の画素を完全に置き換えます
 STRIP_METADATA_DEFAULT = False
 # 「ラベルを付けたら次へ」 starts on.
 AUTO_ADVANCE_DEFAULT = True
+# A first start (and 「設定を初期状態に戻す」) brushes with the 「細かいモザイク」 preset.
+START_TOOL = DEFAULT_PRESETS["細かいモザイク"]
 
 class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbench, QMainWindow):
     closed = Signal(object)
@@ -79,6 +81,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.jobs: set[Job] = set()
         self.document: Document | None = None
         self.documents: OrderedDict[Path, Document] = OrderedDict()
+        # The list state of each image just before its unsaved edits began, shown again if they are discarded.
+        self.clean_states: dict[Path, str] = {}
         self.owned: dict[Path, bytes] = {}
         self.receipts: Receipts | None = None
         self.source_indexes: dict[Path, Receipts] = {}
@@ -440,10 +444,10 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.mask_toggle = tool_button("mask", tr("加工範囲のマスクを表示 · M"), text=tr("マスク"), variant="ghost", checkable=True)
         self.mask_toggle.toggled.connect(self.show_edit_mask)
         row.addStretch(1)
-        # The keys of compare and mask, small and faint beside their buttons.
+        # The keys of compare and mask, small after their text: 比較（Tab）.
         self.key_hints = getattr(self, "key_hints", {})
-        self.key_hints.update(compare=key_hint(), mask=key_hint())
-        for widget in (self.crop_tool, self.compare_button, self.key_hints["compare"], self.mask_toggle, self.key_hints["mask"]):
+        self.key_hints.update(compare=attach_key_hint(self.compare_button), mask=attach_key_hint(self.mask_toggle))
+        for widget in (self.crop_tool, self.compare_button, self.mask_toggle):
             row.addWidget(widget)
         row.addStretch(1)
         layout.addWidget(view_bar)
@@ -492,7 +496,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         tools.addWidget(self.reset_edits_button)
         self.mode = "mosaic"
         self.mode_before_erase = "mosaic"
-        self.mode_strengths = {"mosaic": 20, "blur": 20, "fill": 100, "erase": 100}
+        self.mode_strengths = {"mosaic": START_TOOL["strength"], "blur": 20, "fill": 100, "erase": 100}
         self.shape_combo = QComboBox()
         for text, value in [(tr("ブラシ"), "brush"), (tr("長方形"), "rectangle"), (tr("楕円"), "ellipse"), (tr("多角形"), "polygon"), (tr("投げ縄"), "lasso")]:
             self.shape_combo.addItem(text, value)
@@ -506,7 +510,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.brush_label = ValueLabel()
         self.brush = QSlider(Qt.Orientation.Horizontal)
         self.brush.setRange(4, 600)
-        self.brush.setValue(90)
+        self.brush.setValue(START_TOOL["brush"])
         self.brush.setToolTip(tr("ブラシの直径（元画像のpx） · [ / ]"))
         self.brush.setAccessibleName(tr("ブラシの直径"))
         self.brush.valueChanged.connect(self.tool_changed)
@@ -516,7 +520,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.strength_label = ValueLabel()
         self.strength = QSlider(Qt.Orientation.Horizontal)
         self.strength.setRange(2, 100)
-        self.strength.setValue(20)
+        self.strength.setValue(START_TOOL["strength"])
         self.strength.setAccessibleName(tr("モザイクの強さ"))
         self.strength.setToolTip(tr("強さ · , で弱く / . で強く"))
         self.strength.valueChanged.connect(self.tool_changed)
@@ -551,7 +555,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         expansion_label = self._label(tr("範囲の拡張"), "faint")
         self.expansion = QSlider(Qt.Orientation.Horizontal)
         self.expansion.setRange(0, 3)
-        self.expansion.setValue(1)
+        self.expansion.setValue(START_TOOL["expansion"])
         self.expansion.setPageStep(1)
         self.expansion.setTickPosition(QSlider.TickPosition.TicksBelow)
         tip = tr("なぞった・囲んだ範囲を、外側へこの画素数だけ広げて加工します。\n輪郭のきわが加工されずに残るのを防ぎます。")
@@ -824,7 +828,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                 (self.undo_button, "undo", tr("元に戻す")), (self.redo_button, "redo", tr("やり直す")),
                 (self.help_button, "help", tr("ヘルプ")),
                 (self.reload_folder_button, "reload", tr("フォルダーを再読み込み（ほかのアプリで加えた画像も読み込みます）")),
-                (self.save_next_button, "save_next", tr("メタデータを削除して保存し、次の画像へ（未編集でも保存）")),
+                (self.save_next_button, "save_next", tr("保存して次の画像へ（未編集でも保存。メタデータは保存方法の設定どおり）")),
                 (self.search, "search", tr("ファイル名かメモの一部で絞り込みます")),
                 (self.previous, "previous", tr("前の画像")), (self.next, "next", tr("次の画像")),
                 (self.erase_button, "eraser", tr("なぞった部分を元画像に戻します。もう一度押すと元のツールへ")),
@@ -839,8 +843,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                                   (" · " + self.file_label.rename_hint if self.file_label.rename_hint else ""))
         self.review_hint.setText(" / ".join(self.shortcut_hint(name) or tr("未設定") for name in REVIEW_LABELS))
         for name, label in self.key_hints.items():
-            label.setText(self.shortcut_hint(name))
-            label.setVisible(bool(label.text()))
+            label.set_key(self.shortcut_hint(name))
         for label, button in self.label_buttons.items():
             key = self.shortcut_hint(label)
             button.setToolTip((key + " · " if key else "") + tr("もう一度押すと解除。複数選択した画像にはまとめて付けます。"))
@@ -1135,6 +1138,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         box.setCheckBox(hide)
         accept = box.addButton(tr("上書きする"), QMessageBox.ButtonRole.AcceptRole)
         accept.setObjectName("primary")  # the expected choice, in the accent colour
+        repolish(accept)  # the button was styled when it was added, before it had this name
         change = box.addButton(tr("保存方法を変更"), QMessageBox.ButtonRole.ActionRole)
         box.addButton(tr("キャンセル"), QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(accept)
@@ -1575,6 +1579,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.show_position()
         edited = self.document.edited
         unedited = self.document.edit_state is False
+        self.clean_states.setdefault(self.document.path, self.model.states.get(self.document.path, ""))
         self.model.state(self.document.path, "編集中 · 未保存" if edited else "未編集 · 保存待ち" if unedited else "変更なし · 保存待ち")
         prefix = tr("変更あり") if edited else tr("元画像の状態") if unedited else tr("読み込み時の状態")
         self.info(prefix + (tr(" · 自動保存待ち") if self.auto.isChecked() else tr(" · 「保存」で保存")))
@@ -1670,7 +1675,10 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                 self.pending_action = action
                 self.save()
                 return True
-            self.documents.pop(self.document.path, None)
+            path = self.document.path
+            self.documents.pop(path, None)
+            # The file is as it was before the discarded edits; so is its state in the list.
+            self.model.state(path, self.clean_states.pop(path, ""))
             self.document = None
             self.canvas.set_document(None)
         action()
@@ -1919,6 +1927,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                 document.output = mapping.get(document.output, document.output)
                 documents[document.path] = document
             self.documents = documents
+            self.clean_states = {mapping.get(path, path): state for path, state in self.clean_states.items()}
             self.owned = {mapping.get(path, path): digest for path, digest in self.owned.items()}
             self.batch_failures = {mapping.get(path, path): message for path, message in self.batch_failures.items()}
             self.workspace_inputs = [str(mapping.get(Path(raw).resolve(), Path(raw))) for raw in self.workspace_inputs]
@@ -2524,6 +2533,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                 document.source_digest = result.digest
                 self.model.cache.pop(document.path, None)
             if document.revision == revision:
+                self.clean_states.pop(document.path, None)
                 self.show_saved_state(document, receipt_ok)
             else:
                 self.model.state(document.path, "変更あり · 保存待ち")
