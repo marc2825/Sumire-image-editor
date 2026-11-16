@@ -304,7 +304,8 @@ def _paint_asset(path: Path, kind: str, scale: int):
         stroke.lineTo(11.5, 6.5)
         painter.drawPath(stroke)
     painter.end()
-    if not image.save(str(path), "PNG"):
+    # PySide6's stub types the format as bytes, but at run time only a str works (b"PNG" raises ValueError).
+    if not image.save(str(path), "PNG"):  # type: ignore[call-overload]
         raise OSError(f"cannot write {path.name}")
 
 

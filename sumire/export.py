@@ -282,7 +282,7 @@ def _save_image(image: Image.Image, target: Path, *, source: Path, format: str =
         if payload is not None:
             from .metadata import restored_bytes
             data = restored_bytes(pixels, payload, cancel, jpeg_quality=jpeg_quality)
-            pixels = None
+            pixels = None  # type: ignore[assignment]  # freed early; only the payload is None branches use it again
         options: dict = {}
         if payload is None and format == "JPEG":
             pixels = flatten(pixels, background)

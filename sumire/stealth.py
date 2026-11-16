@@ -7,6 +7,8 @@ https://github.com/neggles/sd-webui-stealth-pnginfo
 """
 from __future__ import annotations
 
+from typing import Any
+
 from PIL import Image
 
 SIGNATURES = {
@@ -25,7 +27,7 @@ def stealth_channels(image: Image.Image) -> tuple[str, ...]:
     if image.mode not in {"RGB", "RGBA", "LA", "P"}:
         return ()
     pixels_image = image if image.mode in {"RGB", "RGBA"} else image.convert("RGBA")
-    pixels = pixels_image.load()
+    pixels: Any = pixels_image.load()  # always loaded here; each pixel is a tuple of channels
     width, height = pixels_image.size
     found = []
     for name, channels in (("alpha", (3,)), ("rgb", (0, 1, 2))):

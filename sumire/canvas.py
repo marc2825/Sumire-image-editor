@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import cast
 from .i18n import tr
 
 import math
@@ -306,7 +307,7 @@ class Canvas(QWidget):
             return
         if (event.button() == Qt.MouseButton.LeftButton and event.modifiers() & Qt.KeyboardModifier.AltModifier
                 and self.in_image(point) and self.ready and not self.locked and not self.compare):
-            r, g, b, _ = self.document.image.getpixel((int(point.x()), int(point.y())))
+            r, g, b, _ = cast(tuple[int, int, int, int], self.document.image.getpixel((int(point.x()), int(point.y()))))
             self.colorPicked.emit(f"#{r:02x}{g:02x}{b:02x}")
             return
         if self.shape == "polygon" and self.stroke:
