@@ -12,7 +12,7 @@ Use “Open folder” or “Open images” on the start page, or drag and drop. 
 
 ## 2. Choose how to save
 
-At the first start, choose “Overwrite the original” or “Save to a separate folder and keep the original”. You can change it any time with “Overwrite · auto-save ▾” at the top right. If you close the window without choosing, it is set to overwrite with auto-save. Sumīre asks before the first overwrite.
+At the first start, choose “Overwrite the original” or “Save to a separate folder and keep the original”. You can change it any time with “Overwrite · auto-save ▾” at the top right. If you close the window without choosing, originals stay unchanged and images are saved to a separate folder. Sumīre asks before the first overwrite.
 
 - Keep originals: turn off “Overwrite the original”.
 - Be able to undo an overwrite: turn on “Keep the original temporarily before overwriting” (on by default). “Restore original” above the image (or “⋯ → Restore the original from before overwriting”) brings back the original from before the first overwrite in this session. **Kept originals are deleted when the app closes.**
@@ -105,7 +105,7 @@ All of these can be undone. When overwriting, Sumīre asks before cropping.
 
 Converting and reducing file size are in the right-click menu (for the whole list, the list's “⋯”). The originals stay; new files go into a new folder. Before writing, the size change is shown, for example “Original 3.2 MB → Compressed 740 KB (77% smaller)”. With “Overwrite the originals” in Reduce file size, images whose format stays the same are replaced by the smaller files (the originals are kept until the app closes, as with overwrite saving).
 
-With two or more images selected, the right-click menu offers “Compare side by side” (up to 6) and “Make a collage”. A collage can be a grid or a free layout; double-click an image to crop it in place.
+With two or more images selected, the right-click menu offers “Compare side by side” (up to 6). “Make a collage” works from one image; “Add images…” in its window adds more. A collage can be a grid or a free layout; double-click an image to crop it in place.
 
 ## Copy and paste
 

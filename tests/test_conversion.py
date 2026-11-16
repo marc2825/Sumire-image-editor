@@ -232,8 +232,14 @@ def test_collage_layouts_and_rendering(patterned):
     covered = render_collage(images[:2], CollageSpec(2, 1, "cover", 0, None))
     # Two cells of the median size (140 × 140); "cover" fills both completely.
     assert covered.size == (140, 280) and covered.getchannel("A").getextrema() == (255, 255)
+    # One image is a collage too (a frame or background around it); none, or too many, is not.
+    assert len(collage_layouts(1)) == 1 and collage_layouts(1)[0][1:] == (1, 1)
+    single = render_collage(images[:1], CollageSpec(1, 1, "contain", 10, "#ffffff"))
+    assert single.size == (160 + 20, 120 + 20) and single.getpixel((0, 0)) == (255, 255, 255, 255)
     with pytest.raises(ImageProblem):
-        render_collage(images[:1], CollageSpec(1, 1))
+        render_collage([], CollageSpec(1, 1))
+    with pytest.raises(ImageProblem):
+        render_collage([patterned] * 17, CollageSpec(4, 5))
 
 
 def test_collage_from_selection_is_saved_without_metadata(qtbot, window, monkeypatch, tmp_path):

@@ -7,9 +7,10 @@ import json
 from collections import OrderedDict
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QPoint, QRectF, QSize, Qt, QThreadPool, QSortFilterProxyModel, QMimeData, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen, QPixmap, QDrag
-from PySide6.QtWidgets import QListView, QAbstractItemView, QStyle, QStyledItemDelegate
+from PySide6.QtCore import (QAbstractListModel, QEvent, QItemSelectionModel, QModelIndex, QPoint, QRectF, QSize, Qt, QThreadPool,
+                            QSortFilterProxyModel, QMimeData, QTimer, Signal)
+from PySide6.QtGui import QColor, QCursor, QFont, QFontMetrics, QIcon, QPainter, QPen, QPixmap, QDrag
+from PySide6.QtWidgets import QApplication, QListView, QAbstractItemView, QStyle, QStyledItemDelegate
 
 from .canvas import qimage
 from .export import check_cancel
@@ -22,6 +23,7 @@ from .workers import Job
 STATE_ROLE = Qt.ItemDataRole.UserRole + 1
 LABEL_ROLE = Qt.ItemDataRole.UserRole + 2
 NOTE_ROLE = Qt.ItemDataRole.UserRole + 3
+TAGS_ROLE = Qt.ItemDataRole.UserRole + 4
 LIST_ICON = QSize(64, 48)
 LABEL_TONES = {"accepted": ("ok", "accent_soft"), "pending": ("warn", "warn_soft"), "rejected": ("danger", "danger_soft")}
 
@@ -65,6 +67,7 @@ class LibraryModel(QAbstractListModel):
         self.states: dict[Path, str] = {}
         self.labels: dict[Path, str] = {}
         self.notes: dict[Path, str] = {}
+        self.tags: dict[Path, tuple[str, ...]] = {}
         self.grid_size = 0
         self.cache: OrderedDict[Path, QIcon] = OrderedDict()
         self.pending: set[Path] = set()
@@ -87,6 +90,7 @@ class LibraryModel(QAbstractListModel):
         self.states.clear()
         self.labels.clear()
         self.notes.clear()
+        self.tags.clear()
         if preserve_cache:
             mapping = mapping or {}
             self.cache = OrderedDict((mapping.get(path, path), icon) for path, icon in self.cache.items()
@@ -111,7 +115,8 @@ class LibraryModel(QAbstractListModel):
             return f"{path.name}\n{state}" + (f"\n{label}" if label else "")
         if role == Qt.ItemDataRole.ToolTipRole:
             state = tr_state(self.states.get(path, "未編集"))
-            return f"{path}\n{label or tr('ラベルなし')} · {state}\n{self.notes.get(path, '')}"
+            tags = " ".join("#" + tag for tag in self.tags.get(path, ()))
+            return f"{path}\n{label or tr('ラベルなし')} · {state}" + (f"\n{tags}" if tags else "") + f"\n{self.notes.get(path, '')}"
         if role == Qt.ItemDataRole.UserRole:
             return str(path)
         if role == STATE_ROLE:
@@ -120,6 +125,8 @@ class LibraryModel(QAbstractListModel):
             return self.labels.get(path)
         if role == NOTE_ROLE:
             return bool(self.notes.get(path))
+        if role == TAGS_ROLE:
+            return self.tags.get(path, ())
         if role == Qt.ItemDataRole.AccessibleTextRole:
             state = tr_state(self.states.get(path, "未編集"))
             return tr("{name}、{state}").format(name=path.name, state=state) + (tr("、{label}").format(label=label) if label else "")
@@ -150,6 +157,21 @@ class LibraryModel(QAbstractListModel):
         if row is not None:
             index = self.index(row)
             self.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole])
+
+    def set_tags(self, path: Path, tags):
+        if tags:
+            self.tags[path] = tuple(tags)
+        else:
+            self.tags.pop(path, None)
+        row = self.rows.get(path)
+        if row is not None:
+            index = self.index(row)
+            self.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole])
+
+    def known_tags(self):
+        """Every tag used in this list, in name order."""
+        found = {tag.casefold(): tag for tags in self.tags.values() for tag in tags}
+        return sorted(found.values(), key=str.casefold)
 
     def set_note(self, path: Path, text: str):
         self.notes[path] = text
@@ -223,20 +245,24 @@ class LibraryFilter(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.label = "all"
+        self.tag = None  # show only images with this tag (compared ignoring case)
         self.text = ""
         self.allowed = None
 
     def filterAcceptsRow(self, row, parent):
         model = self.sourceModel()
         path = model.paths[row]
+        tags = model.tags.get(path, ())
+        text = self.text.casefold()
         return ((self.label == "all" or model.labels.get(path, "unlabelled") == self.label)
-                and (not self.text or self.text.casefold() in path.name.casefold()
-                     or self.text.casefold() in model.notes.get(path, "").casefold())
+                and (self.tag is None or self.tag.casefold() in {tag.casefold() for tag in tags})
+                and (not text or text in path.name.casefold() or text in model.notes.get(path, "").casefold()
+                     or any(text in tag.casefold() for tag in tags))
                 and (self.allowed is None or path in self.allowed))
 
     @property
     def active(self):
-        return self.label != "all" or bool(self.text)
+        return self.label != "all" or self.tag is not None or bool(self.text)
 
     def refresh(self):
         self.invalidate()
@@ -246,6 +272,10 @@ class LibraryView(QListView):
     reordered = Signal(list, str)
     filesDropped = Signal(list)
     MIME = "application/x-sumire-paths"
+    # Dragging near (or past) the top or bottom scrolls: faster the further in, up to MAX_STEP px a tick.
+    EDGE = 56
+    MAX_STEP = 48
+    TICK_MS = 16
 
     def __init__(self):
         super().__init__()
@@ -255,6 +285,55 @@ class LibraryView(QListView):
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        # Qt's own auto-scroll only works inside a thin margin and starts slowly; edge_scroll replaces it.
+        self.setAutoScroll(False)
+        self.dragging = False
+        self.scroll_timer = QTimer(self)
+        self.scroll_timer.setInterval(self.TICK_MS)
+        self.scroll_timer.timeout.connect(self.edge_scroll)
+
+    def mousePressEvent(self, event):
+        # Ctrl+click on a selected image takes just that one out of a multiple selection; Qt would
+        # make it current, and opening it would select it alone.
+        index = self.indexAt(event.position().toPoint())
+        if (event.button() == Qt.MouseButton.LeftButton and event.modifiers() & Qt.KeyboardModifier.ControlModifier
+                and index.isValid() and self.selectionModel().isSelected(index)
+                and len(self.selectionModel().selectedIndexes()) > 1):
+            self.selectionModel().select(index, QItemSelectionModel.SelectionFlag.Deselect)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def edge_step(self, y: int) -> int:
+        """Pixels to scroll for the pointer at viewport height ``y`` (negative is up); 0 away from the edges."""
+        height = self.viewport().height()
+        depth = self.EDGE - y if y < self.EDGE else y - (height - self.EDGE) if y > height - self.EDGE else 0
+        if depth <= 0:
+            return 0
+        step = min(self.MAX_STEP, 4 + depth * self.MAX_STEP // (self.EDGE * 2))
+        return -step if y < self.EDGE else step
+
+    def edge_scroll(self):
+        """While dragging: scroll when the pointer is near the top or bottom, or above or below the list."""
+        position = QCursor.pos()
+        local = self.viewport().mapFromGlobal(position)
+        under = QApplication.widgetAt(position)
+        if under is not None and under is not self.viewport() and not self.isAncestorOf(under) and under.acceptDrops():
+            return  # over another drop target (a folder to move into): leave the list where it is
+        if not -self.EDGE * 2 <= local.x() <= self.viewport().width() + self.EDGE * 2:
+            return  # well to the side: the pointer is somewhere else
+        step = self.edge_step(local.y())
+        if step:
+            bar = self.verticalScrollBar()
+            bar.setValue(bar.value() + step)
+
+    def eventFilter(self, watched, event):
+        # The wheel scrolls the list while an image is being dragged.
+        if self.dragging and event.type() == QEvent.Type.Wheel:
+            bar = self.verticalScrollBar()
+            bar.setValue(bar.value() - event.angleDelta().y())
+            return True
+        return super().eventFilter(watched, event)
 
     def enable_dragging(self):
         self.setDragEnabled(True)
@@ -298,7 +377,16 @@ class LibraryView(QListView):
         blank = QPixmap(1, 1)
         blank.fill(Qt.GlobalColor.transparent)
         drag.setDragCursor(blank, Qt.DropAction.MoveAction)
-        drag.exec(Qt.DropAction.MoveAction)
+        self.dragging = True
+        application = QApplication.instance()
+        application.installEventFilter(self)
+        self.scroll_timer.start()
+        try:
+            drag.exec(Qt.DropAction.MoveAction)
+        finally:
+            self.scroll_timer.stop()
+            application.removeEventFilter(self)
+            self.dragging = False
 
     def dragEnterEvent(self, event):
         if event.source() is self and event.mimeData().hasFormat(self.MIME):
@@ -310,7 +398,7 @@ class LibraryView(QListView):
 
     def dragMoveEvent(self, event):
         internal = event.source() is self and event.mimeData().hasFormat(self.MIME)
-        super().dragMoveEvent(event)  # auto-scrolls near the edges
+        super().dragMoveEvent(event)
         self.dragEnterEvent(event)
         line = None
         if internal:
@@ -404,6 +492,7 @@ class LibraryDelegate(QStyledItemDelegate):
         state = tr_state(state)
         label = index.data(LABEL_ROLE)
         note = index.data(NOTE_ROLE)
+        tags = index.data(TAGS_ROLE) or ()
         icon = index.data(Qt.ItemDataRole.DecorationRole)
         size = self.view.iconSize()
         if self.grid and size.width() < COMPACT_GRID:
@@ -462,8 +551,9 @@ class LibraryDelegate(QStyledItemDelegate):
         painter.drawEllipse(QRectF(text_left, line_top + 5.5, 6, 6))
         painter.setPen(QColor(TOKENS["text_muted"]))
         available = int(width - pill_width - 16)
+        line = state + ("  " + " ".join("#" + tag for tag in tags) if tags else "")
         painter.drawText(QRectF(text_left + 11, line_top, max(0, available), 17), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                         small_metrics.elidedText(state, Qt.TextElideMode.ElideRight, max(0, available)))
+                         small_metrics.elidedText(line, Qt.TextElideMode.ElideRight, max(0, available)))
         painter.restore()
 
     @staticmethod

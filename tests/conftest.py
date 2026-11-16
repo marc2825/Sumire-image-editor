@@ -35,6 +35,8 @@ def quiet_overwrite_notice(monkeypatch, tmp_path):
     monkeypatch.setattr(window, "STRIP_METADATA_DEFAULT", True)
     # Labelling tests check the labelled image; moving on has its own test.
     monkeypatch.setattr(window, "AUTO_ADVANCE_DEFAULT", False)
+    # Most tests exercise overwriting; the first-run tests check the real default (a separate folder).
+    monkeypatch.setattr(window, "OVERWRITE_DEFAULT", True)
     store = backups.OriginalBackups(tmp_path)
     monkeypatch.setattr(backups, "_store", store)
     from sumire import i18n

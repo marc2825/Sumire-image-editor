@@ -17,13 +17,15 @@ def set_key(dialog, command, key, index=0):
 
 
 @pytest.mark.parametrize("key,label", [(Qt.Key.Key_1, "accepted"), (Qt.Key.Key_2, "pending"), (Qt.Key.Key_3, "rejected")])
-def test_default_review_keys_toggle_without_zooming(qtbot, window, key, label):
+def test_default_review_keys_label_without_zooming(qtbot, window, key, label):
     page = window
     scale = page.canvas.scale
     QTest.keyClick(page.canvas, key)
     assert page.model.labels[page.document.path] == label
     assert page.canvas.scale == scale
     QTest.keyClick(page.canvas, key)
+    assert page.model.labels[page.document.path] == label  # pressing it again keeps the label
+    QTest.keyClick(page.canvas, Qt.Key.Key_0, Qt.KeyboardModifier.AltModifier)
     assert page.document.path not in page.model.labels
     QTest.keyClick(page.canvas, Qt.Key.Key_1, Qt.KeyboardModifier.ControlModifier)
     assert page.canvas.scale == 1

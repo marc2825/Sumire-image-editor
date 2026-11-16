@@ -195,3 +195,14 @@ def test_qt_standard_texts_are_japanese(qapp):
     finally:
         if translator is not None:
             qapp.removeTranslator(translator)
+
+
+def test_wsl_picks_the_newest_windows_python_by_version_not_by_name():
+    """Issue #1: a text sort put Python39 before Python312."""
+    from sumire.explorer import newest_python
+    base = Path("/mnt/c/Users/user/AppData/Local/Programs/Python")
+    found = [base / name / "pythonw.exe" for name in ("Python39", "Python312", "Python311", "Python313-32")]
+    assert newest_python(found) == base / "Python313-32" / "pythonw.exe"
+    assert newest_python(found[:3]) == base / "Python312" / "pythonw.exe"
+    assert newest_python([base / "Python312-32" / "pythonw.exe", base / "Python312" / "pythonw.exe"]) == base / "Python312" / "pythonw.exe"
+    assert newest_python([]) is None

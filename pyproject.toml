@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sumire-image"
-version = "1.1.1"
+version = "1.2.0"
 description = "Offline image redaction and metadata removal for Windows"
 requires-python = ">=3.12"
 license = "MIT"
@@ -26,3 +26,21 @@ sumire = ["help_docs/*.md", "help_docs/*/*.md", "locales/*.json", "fonts/*.otf",
 testpaths = ["tests"]
 qt_api = "pyside6"
 
+[tool.ruff]
+target-version = "py312"
+line-length = 160
+
+[tool.ruff.lint]
+# Mistakes rather than style: undefined or unused names, syntax errors.
+select = ["F", "E9"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests import pytest fixtures by name and take them as parameters.
+"tests/*" = ["F401", "F811"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["sumire"]
+# PySide6 and Pillow are checked where they have type information; untyped functions are not checked inside.
+ignore_missing_imports = true
+follow_imports = "silent"

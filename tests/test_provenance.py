@@ -80,7 +80,8 @@ def certificate(organization):
     return der(0x30, tbs + der(0x30, b"") + der(3, b"\x00"))
 
 
-def manifest_store(organization="OpenAI", generator="ChatGPT", agent="GPT-4o", when=None, timestamp=None, thumbnail=False):
+def manifest_store(organization="OpenAI", generator="ChatGPT", agent="GPT-4o", when=None, timestamp=None, thumbnail=False,
+                   icon=False, embedded=False):
     created = {"action": "c2pa.created", "digitalSourceType": AI, "softwareAgent": {"name": agent}}
     if when:
         created["when"] = when
@@ -92,7 +93,9 @@ def manifest_store(organization="OpenAI", generator="ChatGPT", agent="GPT-4o", w
     return superbox(b"c2pa", "c2pa", superbox(
         b"c2ma", "urn:uuid:synthetic",
         superbox(b"c2as", "c2pa.assertions", superbox(b"cbor", "c2pa.actions", box(b"cbor", cbor(actions))),
-                 *([superbox(b"bfdb", "c2pa.thumbnail.claim.jpeg", box(b"bidb", picture("JPEG")))] if thumbnail else [])),
+                 *([superbox(b"bfdb", "c2pa.thumbnail.claim.jpeg", box(b"bidb", picture("JPEG")))] if thumbnail else []),
+                 *([superbox(b"bfdb", "c2pa.icon", box(b"bidb", picture("PNG")))] if icon else []),
+                 *([superbox(b"bfdb", "c2pa.embedded-data", box(b"bidb", picture("PNG")))] if embedded else [])),
         superbox(b"c2cl", "c2pa.claim", box(b"cbor", cbor(claim))),
         superbox(b"c2cs", "c2pa.signature", box(b"cbor", cbor(signature)))))
 
@@ -310,3 +313,15 @@ def test_an_edited_c2pa_image_opens_again_in_the_window(qtbot, window, tmp_path)
                     or "読み込みエラー" in window.model.states.get(path, ""), timeout=10000)
     assert "読み込みエラー" not in window.model.states.get(path, "")
     assert C2PA in window.document.metadata and "保存済み" in window.model.states[path]
+
+
+def test_c2pa_with_an_icon_is_kept_but_embedded_image_data_is_not(tmp_path):
+    """ChatGPT's manifest carries the issuer's icon (kept); any other embedded picture may copy the image."""
+    kept = tmp_path / "icon.png"
+    kept.write_bytes(png_with(manifest_store(icon=True)))
+    save_keeping_metadata(kept, "PNG")
+    assert raw_store(kept.read_bytes(), "PNG") == manifest_store(icon=True)
+    dropped = tmp_path / "embedded.png"
+    dropped.write_bytes(png_with(manifest_store(embedded=True)))
+    save_keeping_metadata(dropped, "PNG")
+    assert raw_store(dropped.read_bytes(), "PNG") is None

@@ -72,7 +72,7 @@ def test_search_finds_notes_as_well_as_names(qtbot, window):
     qtbot.waitUntil(lambda: window.visible_paths() == [second], timeout=5000)
     window.search.setText("image10")
     qtbot.waitUntil(lambda: window.visible_paths() == [third], timeout=5000)
-    assert window.search.placeholderText() == "名前・メモで検索"
+    assert window.search.placeholderText() == "名前・メモ・タグで検索"
 
 
 def test_compare_mask_and_eraser_show_their_keys(window):

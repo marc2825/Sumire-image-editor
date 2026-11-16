@@ -3,7 +3,6 @@ from .i18n import tr
 from collections import Counter, defaultdict
 import hashlib
 import json
-import os
 from pathlib import Path
 
 from PySide6.QtCore import QFile, QItemSelectionModel, QSize, QStandardPaths, Qt, QTimer
@@ -134,12 +133,12 @@ class Workbench:
         search_row = QHBoxLayout()
         search_row.setSpacing(6)
         self.search = QLineEdit()
-        self.search.setPlaceholderText(tr("名前・メモで検索"))
+        self.search.setPlaceholderText(tr("名前・メモ・タグで検索"))
         self.search.setClearButtonEnabled(True)
         self.search.addAction(icon("search", "text_muted"), QLineEdit.ActionPosition.LeadingPosition)
         self.search.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        self.search.setToolTip(tr("ファイル名かメモの一部で絞り込みます · Ctrl+F"))
-        self.search.setAccessibleName(tr("画像を名前・メモで検索"))
+        self.search.setToolTip(tr("ファイル名・メモ・タグの一部で絞り込みます · Ctrl+F"))
+        self.search.setAccessibleName(tr("画像を名前・メモ・タグで検索"))
         self.search.textChanged.connect(lambda _text: self.search_timer.start())
         search_row.addWidget(self.search, 1)
         self.filter_button = tool_button("filter", tr("並び順・ラベルの絞り込み・一覧 / グリッド"), self.show_filter_popover)
@@ -225,6 +224,11 @@ class Workbench:
         self.filter_combo.currentIndexChanged.connect(lambda *_args: tint_combo(self.filter_combo))
         tint_combo(self.filter_combo)
         layout.addWidget(self.filter_combo)
+        layout.addWidget(section_label(tr("タグで絞り込み")))
+        self.tag_combo = QComboBox()
+        self.tag_combo.addItem(tr("すべてのタグ"), None)
+        self.tag_combo.currentIndexChanged.connect(self.tag_filter_changed)
+        layout.addWidget(self.tag_combo)
         layout.addWidget(section_label(tr("表示")))
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -280,6 +284,10 @@ class Workbench:
             ("delete_selected", tr("画像を削除…"), self.delete_selected),
             ("number_selected", tr("選択画像を連番へ"), lambda: self.number_images(self.selected_paths())),
             ("note", tr("メモ…"), self.edit_note),
+            ("tags", tr("タグ…"), self.edit_tags),
+            ("cut_files", tr("切り取り"), lambda: self.clip_files(cut=True)),
+            ("copy_files", tr("ファイルをコピー"), lambda: self.clip_files(cut=False)),
+            ("paste_files", tr("貼り付け"), self.paste_image),
             ("undo_organize", tr("直前の整理操作を戻す\tCtrl+Alt+Z"), self.undo_organization),
             ("compare", tr("複数枚を並べて比較…"), self.compare_images),
             ("duplicates", tr("重複を削除…"), self.analyze_duplicates),
@@ -290,6 +298,7 @@ class Workbench:
             ("convert_selected", tr("形式を変換…"), lambda: self.convert_images(self.selected_or_current(), "convert")),
             ("compress_selected", tr("容量削減…"), lambda: self.convert_images(self.selected_or_current(), "compress")),
             ("collage", tr("コラージュを作成…"), self.make_collage),
+            ("merge_labels", tr("ラベルのフォルダーをまとめる…"), self.merge_label_folders),
         ]
         for key, text, callback in actions:
             action = QAction(text, self)
@@ -299,7 +308,8 @@ class Workbench:
         self.workflow_actions["delete_selected"].setToolTip(tr("選んだ画像ファイルをごみ箱へ移します。実行前に確認します。"))
         self.workflow_actions["save_as"].setToolTip(tr("表示中の画像を、名前・形式を指定して新しいファイルに保存します（メタデータなし）。"))
         self.workflow_actions["duplicates"].setToolTip(tr("内容が完全に同じ画像を探し、残す1枚を選んで残りをごみ箱へ移します。実行前に確認します。"))
-        self.workflow_actions["collage"].setToolTip(tr("選択した2枚以上の画像を、並べ方を選んで1枚にまとめます。"))
+        self.workflow_actions["collage"].setToolTip(tr("選択した画像（1枚から）を、並べ方を選んで1枚にまとめます。画像はあとから追加できます。"))
+        self.workflow_actions["merge_labels"].setToolTip(tr("このタブのフォルダーにある採用・保留・不採用のフォルダーの画像を、1つのフォルダーに集めます。実行前に確認します。"))
         self.workflow_actions["reset_list"].setToolTip(tr("この起動中の上書きを元画像に戻し、表示中の画像の加工を消して、"
                                                       "ラベル・メモ・並び順・絞り込み・検索も解除します。実行前に確認します。"))
         for key, tip in (
@@ -324,7 +334,7 @@ class Workbench:
         # 整理を戻す are buttons in the panel header).
         menu = self.library_menu
         for item in (self.number_button, None, self.workflow_actions["convert_all"], self.workflow_actions["compress_all"],
-                     None, self.workflow_actions["duplicates"], self.workflow_actions["reset_list"], None, self.watch_action):
+                     None, self.workflow_actions["merge_labels"], self.workflow_actions["duplicates"], self.workflow_actions["reset_list"], None, self.watch_action):
             menu.addSeparator() if item is None else menu.addAction(item)
 
     def populate_selection_menu(self, menu):
@@ -337,7 +347,9 @@ class Workbench:
         for item in (self.workflow_actions["save_as"], self.workflow_actions["save_selected"],
                      self.workflow_actions["convert_selected"], self.workflow_actions["compress_selected"], None,
                      self.workflow_actions["compare"], self.workflow_actions["collage"], self.workflow_actions["number_selected"], None,
-                     self.rename_button, self.workflow_actions["note"], None, self.workflow_actions["remove_selected"],
+                     self.rename_button, self.workflow_actions["note"], self.workflow_actions["tags"], None,
+                     self.workflow_actions["cut_files"], self.workflow_actions["copy_files"], self.workflow_actions["paste_files"], None,
+                     self.workflow_actions["remove_selected"],
                      self.workflow_actions["delete_selected"]):
             menu.addSeparator() if item is None else menu.addAction(item)
 
@@ -460,6 +472,13 @@ class Workbench:
         self.search.blockSignals(True)
         self.search.clear()
         self.search.blockSignals(False)
+        if self.proxy.tag is not None:
+            self.tag_combo.blockSignals(True)
+            self.tag_combo.setCurrentIndex(0)
+            self.tag_combo.blockSignals(False)
+            self.proxy.tag = None
+            if self.filter_combo.currentData() == "all" and not self.proxy.text:
+                self.apply_filter()
         if self.filter_combo.currentData() != "all":
             self.filter_combo.setCurrentIndex(0)
         elif self.proxy.text:
@@ -512,13 +531,17 @@ class Workbench:
         self.export_accepted_button.setEnabled(labelled)
         for key in ("duplicates", "compare", "convert_all", "compress_all"):
             self.workflow_actions[key].setEnabled(ready)
-        for key in ("save_selected", "number_selected", "remove_selected", "delete_selected", "convert_selected", "compress_selected"):
+        self.workflow_actions["merge_labels"].setEnabled(not self.busy() and not self.saving and self.browsed_folder() is not None)
+        for key in ("save_selected", "number_selected", "remove_selected", "delete_selected", "convert_selected", "compress_selected",
+                    "cut_files", "copy_files", "paste_files"):
             self.workflow_actions[key].setEnabled(ready and bool(selected or self.document))
         self.workflow_actions["save_as"].setEnabled(ready and self.document is not None)
-        self.workflow_actions["collage"].setEnabled(ready and len(selected) >= 2)
+        self.workflow_actions["collage"].setEnabled(ready and bool(selected or self.document))
         self.workflow_actions["note"].setEnabled(ready and self.document is not None)
+        self.workflow_actions["tags"].setEnabled(ready and bool(selected or self.document))
         self.selection_bar.setVisible(len(selected) > 1)
         self.selection_label.setText(tr("{count}枚を選択中").format(count=len(selected)))
+        self.selection_label.setToolTip(tr("Ctrl+クリックで1枚ずつ追加・解除、Shift+クリックで範囲を選べます。"))
         active = self.proxy.active
         if self.filter_button.property("active") != active:
             self.filter_button.setProperty("active", active)
@@ -535,9 +558,31 @@ class Workbench:
                 self.filter_combo.setCurrentIndex(self.filter_combo.findData(self.proxy.label))
                 self.filter_combo.blockSignals(False)
 
+    def tag_filter_changed(self):
+        if self.busy() or self.saving:
+            return
+        self.guard(self.apply_filter)
+
+    def refresh_tag_filter(self):
+        """The tag choices follow the tags of the list; a tag no longer used stops filtering."""
+        current = self.proxy.tag
+        known = self.model.known_tags()
+        self.tag_combo.blockSignals(True)
+        self.tag_combo.clear()
+        self.tag_combo.addItem(tr("すべてのタグ"), None)
+        for tag in known:
+            self.tag_combo.addItem("#" + tag, tag)
+        index = self.tag_combo.findData(current) if current is not None else 0
+        self.tag_combo.setCurrentIndex(max(0, index))
+        self.tag_combo.setEnabled(bool(known))
+        self.tag_combo.blockSignals(False)
+        if current is not None and index < 0:
+            self.apply_filter()
+
     def apply_filter(self):
         selection = self.list.selectionModel()
         selection.blockSignals(True)
+        self.proxy.tag = self.tag_combo.currentData()
         self.proxy.label = self.filter_combo.currentData()
         self.proxy.text = self.search.text().strip()
         self.proxy.refresh()
@@ -699,6 +744,7 @@ class Workbench:
         current_edits = document is not None and document.path not in restorable and (document.edited or document.dirty)
         labelled = {path: self.model.labels[path] for path in paths if self.model.labels.get(path)}
         noted = {path: self.model.notes[path] for path in paths if self.model.notes.get(path)}
+        tagged = {path: self.model.tags[path] for path in paths if self.model.tags.get(path)}
         dialog = QMessageBox(self)
         dialog.setWindowTitle(tr("一覧を初期状態に戻す"))
         dialog.setIcon(QMessageBox.Icon.Warning)
@@ -708,6 +754,7 @@ class Workbench:
                 (tr("表示中の画像"), tr("加工とマスクを消す") if current_edits else ""),
                 (tr("ラベル"), tr("{count}枚から外す").format(count=len(labelled))),
                 (tr("メモ"), tr("{count}枚から消す").format(count=len(noted)) if noted else ""),
+                (tr("タグ"), tr("{count}枚から外す").format(count=len(tagged)) if tagged else ""),
                 (tr("一覧"), tr("名前順に並べ、絞り込みと検索を解除"))]
         dialog.setInformativeText(fact_table(rows, [tr("元画像に戻したファイルは「元に戻す」で取り消せません。")]))
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
@@ -728,6 +775,8 @@ class Workbench:
                 continue
             self.model.set_note(path, "")
             self.operation_history.append(("note", (path, text)))
+        if tagged:
+            self.write_tags(dict.fromkeys(tagged, ()), tagged)
         self.reset_filters()
         if self.sort_combo.currentIndex() != 0:
             self.sort_combo.setCurrentIndex(0)
@@ -837,6 +886,42 @@ class Workbench:
             self.operation_history.append(("labels", changed))
         self.update_controls()
 
+    def write_tags(self, values, history=None):
+        """{path: tags} into each folder's records; ``history`` (the tags before) makes it undoable."""
+        grouped = defaultdict(dict)
+        for path, tags in values.items():
+            grouped[path.parent][path] = tags
+        written = {}
+        try:
+            for folder, updates in grouped.items():
+                self.label_index(next(iter(updates))).set_tags(updates)
+                for path, tags in updates.items():
+                    self.model.set_tags(path, tags)
+                    written[path] = history[path] if history is not None else None
+        except (OSError, ValueError):
+            self.error(tr("タグを保存できませんでした。管理記録の保存先の空き容量とアクセス権を確認してください。"))
+        else:
+            self.info(tr("タグを変更しました · {count}枚").format(count=len(values)))
+        if history is not None and written:
+            self.operation_history.append(("tags", written))
+        self.refresh_tag_filter()
+        if self.proxy.tag is not None:
+            self.apply_filter()
+        self.update_controls()
+
+    def edit_tags(self):
+        paths = self.selected_or_current()
+        if not paths or self.busy() or self.saving:
+            return
+        from .tag_dialog import TagDialog
+        current = {path: self.model.tags.get(path, ()) for path in paths}
+        dialog = TagDialog(current, self.model.known_tags(), self)
+        if not self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted) or self.busy() or self.saving:
+            return
+        changed = {path: tags for path, tags in dialog.result_tags().items() if path in self.model.rows}
+        if changed:
+            self.write_tags(changed, {path: current[path] for path in changed})
+
     def edit_note(self):
         if not self.document or self.busy() or self.saving:
             return
@@ -889,6 +974,8 @@ class Workbench:
             previous = [path for path in value if path in self.model.rows]
             known = set(previous)
             self.replace_list(previous + [path for path in self.model.paths if path not in known])
+        elif kind == "tags":
+            self.write_tags(value)
         elif kind == "note":
             path, text = value
             try:
@@ -1088,7 +1175,7 @@ class Workbench:
         if failed:
             self.error(text + tr(" / 移せなかった画像 {count}枚（ごみ箱のない場所や、使用中のファイル）").format(count=len(failed)))
         else:
-            self.info(text)
+            self.report(text)
 
     def poll_folders(self):
         self.sync_watch_scope()
@@ -1146,7 +1233,7 @@ class Workbench:
             "format": self.format_combo.currentData(), "output": str(self.output_folder) if self.custom_folder else None,
             "auto_advance": self.auto_advance.isChecked(), "auto_sort": self.auto_sort_action.isChecked(), "grid": self.view_combo.currentIndex(),
             "thumbnail": self.thumbnail_size.value(), "watch": self.watch_action.isChecked(),
-            "novelai_adjust": self.novelai_adjust.isChecked(),
+            "novelai_adjust": self.novelai_adjust.isChecked(), "novelai_metadata": self.novelai_metadata.isChecked(),
             "show_mask": self.mask_toggle.isChecked(),
             "metadata_backup": self.metadata_backup.isChecked(),
             "strip_metadata": self.strip_metadata.isChecked(),
@@ -1198,12 +1285,15 @@ class Workbench:
         data = self.preferences.data.get("settings", {}) if data is None else data
         if not isinstance(data, dict):
             return
+        if "overwrite" not in data and self.preferences.data:
+            # A profile from before the first-run choice (0.4.0) overwrote by default; keep it so.
+            data = {**data, "overwrite": True}
         quality = data.get("jpeg_quality", 95)
         self.jpeg_quality = quality if type(quality) is int and 1 <= quality <= 100 else 95
         self.format_combo.setItemText(1, tr("JPEG · 品質{jpeg_quality}・白背景").format(jpeg_quality=self.jpeg_quality))
         for widget, key in [(self.auto, "auto"), (self.overwrite, "overwrite"), (self.auto_advance, "auto_advance"),
                             (self.auto_sort_action, "auto_sort"),
-                            (self.watch_action, "watch"), (self.novelai_adjust, "novelai_adjust"), (self.mask_toggle, "show_mask"),
+                            (self.watch_action, "watch"), (self.novelai_adjust, "novelai_adjust"), (self.novelai_metadata, "novelai_metadata"), (self.mask_toggle, "show_mask"),
                             (self.metadata_backup, "metadata_backup"), (self.inverse_action, "inverse_selection"),
                             (self.strip_metadata, "strip_metadata"), (self.keep_originals, "keep_originals"),
                             (self.navigator_action, "navigator")]:

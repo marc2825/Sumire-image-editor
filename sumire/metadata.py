@@ -17,7 +17,7 @@ import zlib
 
 from PIL import Image, ImageCms
 
-from .imaging import ImageProblem, MAX_INPUT_BYTES, clean_pixels, validate_opened
+from .imaging import ImageProblem, MAX_INPUT_BYTES, clean_pixels, flatten, validate_opened
 from .labels import label_key
 from . import provenance
 from .storage import connect_owned, record_path, SCHEMAS
@@ -558,8 +558,7 @@ def restored_bytes(image, payload, cancel=None, *, jpeg_quality=95):
             access[x, y] = tuple(values)
     output = io.BytesIO()
     if format == "JPEG":
-        flat = Image.new("RGB", pixels.size, "white")
-        flat.paste(pixels, mask=pixels.getchannel("A"))
+        flat = flatten(pixels)
         flat.save(output, format="JPEG", quality=jpeg_quality, subsampling=0)
     else:
         pixels.save(output, format=format, **({"lossless": True, "exact": True} if format == "WEBP" else {}))

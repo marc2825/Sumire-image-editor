@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
 from .backups import store as originals
 from .convert import TARGETS, Encoding, commit, encode, format_bytes, replace_original, size_summary, stage, writable
 from .editing import EditSpec
+from .imaging import load_image
 from .export import available_target, check_cancel, detect_format, file_digest
 from .imaging import ImageProblem
 from .ui import fact_table, html_text
@@ -318,11 +319,11 @@ class OutputFeatures:
     # --- collage -----------------------------------------------------------------------
     def make_collage(self):
         from .collage import MAX_COLLAGE
-        paths = self.selected_paths()
+        paths = self.selected_or_current()
         if self.busy() or self.saving:
             return
-        if len(paths) < 2:
-            self.info(tr("コラージュにする画像を2枚以上選択してください（Ctrl / Shift + クリック）。"))
+        if not paths:
+            self.info(tr("コラージュにする画像を選んでください。あとから画像を追加することもできます。"))
             return
         if len(paths) > MAX_COLLAGE:
             QMessageBox.warning(self, tr("画像が多すぎます"), tr("コラージュにできるのは{MAX_COLLAGE}枚までです。{MAX_COLLAGE}枚以下にしてください。").format(MAX_COLLAGE=MAX_COLLAGE))
@@ -351,7 +352,7 @@ class OutputFeatures:
     def finish_collage(self, paths, images):
         from .export import save_image
         from .output_dialogs import CollageDialog
-        dialog = CollageDialog([path.name for path in paths], images, self)
+        dialog = CollageDialog([path.name for path in paths], images, self, loader=load_image)
         if not self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted):
             return
         render = dialog.renderer()

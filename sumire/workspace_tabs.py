@@ -187,9 +187,10 @@ class WorkspaceWindow(QMainWindow):
         chosen = dialog.exec() == QDialog.DialogCode.Accepted and dialog.save_mode() is not None
         data = dict(self.preferences.data)
         data.setdefault("storage", "app")
-        if chosen:
-            settings = data.get("settings", {})
-            data["settings"] = {**(settings if isinstance(settings, dict) else {}), **dialog.settings()}
+        settings = data.get("settings", {})
+        settings = settings if isinstance(settings, dict) else {}
+        # Closing without a choice must not lead to replacing originals: save to a separate folder.
+        data["settings"] = {**settings, **(dialog.settings() if chosen else {"overwrite": False})}
         dialog.deleteLater()
         try:
             self.preferences.save(data)
@@ -200,7 +201,7 @@ class WorkspaceWindow(QMainWindow):
             page.restore_settings()
             page.update_controls()
         if not chosen:
-            self.welcome.info(tr("保存方法は初期設定（元画像に上書き・自動保存）のままです。右上の保存方法から変更できます。"))
+            self.welcome.info(tr("保存方法を選ばなかったため、元画像は変更せず、別フォルダー（画像のあるフォルダー内の「Sumīre」）に保存します。右上の保存方法から変更できます。"))
         return True
 
     def session_state(self):

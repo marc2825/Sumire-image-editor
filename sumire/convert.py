@@ -20,7 +20,7 @@ from PIL import Image
 
 from .editing import lanczos3_resize
 from .export import check_cancel
-from .imaging import HEIF_WRITABLE, ImageProblem, clean_pixels
+from .imaging import HEIF_WRITABLE, ImageProblem, clean_pixels, flatten
 from .stealth import remove_stealth, stealth_channels
 
 # Pillow format name → (label, extension). HEIF needs the optional pillow-heif plugin.
@@ -64,12 +64,6 @@ class Encoding:
         return TARGETS[self.format][1]
 
 
-def _flatten(pixels, background="white"):
-    flat = Image.new("RGB", pixels.size, background)
-    flat.paste(pixels, mask=pixels.getchannel("A"))
-    return flat
-
-
 def _opaque(pixels) -> bool:
     return pixels.getchannel("A").getextrema() == (255, 255)
 
@@ -89,7 +83,7 @@ def _exact_palette(rgb):
 def _palette(pixels, colors):
     """Reduce to ``colors`` colours, keeping fully transparent areas transparent."""
     transparent = not _opaque(pixels)
-    rgb = _flatten(pixels)
+    rgb = flatten(pixels)
     reduced = rgb.quantize(colors=min(colors, 255 if transparent else 256), method=Image.Quantize.MEDIANCUT,
                            dither=Image.Dither.FLOYDSTEINBERG)
     flat = reduced.getpalette()[:765]
@@ -117,7 +111,8 @@ def encode(image, encoding: Encoding):
         raise ImageProblem(tr("品質は1〜100で指定してください。"))
     pixels = prepared_pixels(image, encoding)
     expected = pixels
-    format, options = encoding.format, {}
+    format = encoding.format
+    options: dict[str, object] = {}
     if format == "PNG":
         options = {"optimize": True, "compress_level": 9}
         if encoding.colors:
@@ -131,7 +126,7 @@ def encode(image, encoding: Encoding):
         else:
             output = pixels
     elif format == "JPEG":
-        output = _flatten(pixels)
+        output = flatten(pixels)
         quality = quality or 90
         options = {"quality": quality, "subsampling": 0 if quality >= 90 else 2, "optimize": True}
         expected = None
@@ -146,13 +141,13 @@ def encode(image, encoding: Encoding):
         expected = None
     elif format == "BMP":
         # Readers ignore BMP alpha inconsistently; write a predictable opaque image.
-        output = _flatten(pixels)
+        output = flatten(pixels)
         expected = None if not _opaque(pixels) else pixels
     elif format == "TIFF":
         output = pixels if not _opaque(pixels) else pixels.convert("RGB")
         options = {"compression": "tiff_adobe_deflate"}
     elif format == "GIF":
-        rgb = _flatten(pixels)
+        rgb = flatten(pixels)
         exact = _exact_palette(rgb) if _opaque(pixels) and not encoding.colors else None
         output = exact or _palette(pixels, encoding.colors or 256)
         if "transparency" in output.info:

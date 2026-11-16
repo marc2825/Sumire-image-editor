@@ -302,6 +302,8 @@ class Canvas(QWidget):
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             return
         point = self.to_image(pos)
+        if self.document is None:
+            return
         if (event.button() == Qt.MouseButton.LeftButton and event.modifiers() & Qt.KeyboardModifier.AltModifier
                 and self.in_image(point) and self.ready and not self.locked and not self.compare):
             r, g, b, _ = self.document.image.getpixel((int(point.x()), int(point.y())))
@@ -353,7 +355,7 @@ class Canvas(QWidget):
             self.pan_start = None
             self.setCursor(Qt.CursorShape.OpenHandCursor if self.space_down else Qt.CursorShape.CrossCursor)
             return
-        if event.button() != Qt.MouseButton.LeftButton or not self.stroke:
+        if event.button() != Qt.MouseButton.LeftButton or not self.stroke or self.document is None:
             return
         stroke = self.stroke
         point = self.to_image(event.position())

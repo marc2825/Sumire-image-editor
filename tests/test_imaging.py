@@ -32,6 +32,28 @@ def test_partial_edge_block_does_not_add_black():
     assert result.tobytes() == Image.new("RGBA", image.size, "white").tobytes()
 
 
+@pytest.mark.parametrize("mode,strength", [("mosaic", 4), ("blur", 3)])
+def test_effects_keep_transparency_and_add_no_black(mode, strength):
+    """Issue #1: blur and mosaic made semi-transparent areas opaque and transparent ones black."""
+    image = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    image.paste((255, 0, 0, 255), (16, 0, 32, 32))  # right half opaque red
+    image.paste((0, 0, 255, 128), (0, 24, 32, 32))  # bottom strip half-transparent blue
+    result = make_effect(image, Tool(mode, strength=strength))
+    assert result.getpixel((0, 0))[3] == 0  # far inside the transparent area: still transparent
+    assert result.getpixel((31, 0)) == (255, 0, 0, 255)  # inside the red: unchanged
+    assert 0 < result.getpixel((0, 31))[3] < 255  # the half-transparent strip stays half-transparent
+    for x in range(32):
+        red, green, blue, alpha = result.getpixel((x, 4))
+        if alpha:
+            assert (red, green, blue) != (0, 0, 0) and red >= 200  # no dark fringe from transparent pixels
+
+
+def test_mosaic_does_not_reveal_colour_stored_in_transparent_pixels():
+    image = Image.new("RGBA", (8, 8), (0, 255, 0, 0))  # fully transparent, with a colour stored in it
+    result = make_effect(image, Tool("mosaic", strength=4))
+    assert all(pixel[3] == 0 for pixel in result.getdata())
+
+
 def test_blur_matches_pillow(patterned):
     from PIL import ImageFilter
     result = make_effect(patterned, Tool("blur", strength=8))
@@ -67,13 +89,15 @@ def test_undo_redo_branching_and_multiple_strokes(patterned):
     assert doc.revision == 3
 
 
-def test_alpha_completely_replaced_only_within_mask():
+def test_transparent_area_stays_transparent_and_its_stored_colour_is_wiped_within_mask():
+    """A colour stored in fully transparent pixels must not appear (it used to, made opaque), and
+    within the mask it is wiped, so it cannot be read even by a viewer that ignores transparency."""
     doc = Document(Path("test.png"), Image.new("RGBA", (100, 100), (120, 10, 60, 0)))
     stroke = Stroke(doc, Tool("mosaic", 12))
     stroke.add((50, 50))
     stroke.finish()
-    assert doc.image.getpixel((50, 50))[3] == 255
-    assert doc.image.getpixel((0, 0))[3] == 0
+    assert doc.image.getpixel((50, 50)) == (0, 0, 0, 0)
+    assert doc.image.getpixel((0, 0)) == (120, 10, 60, 0)  # outside the mask nothing changes
 
 
 def test_fill_and_cancel(patterned):
@@ -211,3 +235,19 @@ def test_extreme_aspect_ratio_rejected(tmp_path, monkeypatch):
     with pytest.raises(ImageProblem, match="32,768"):
         load_image(path)
 
+
+def test_a_stroke_compares_only_the_changed_area(patterned, monkeypatch):
+    """Issue #1: every stroke compared the whole image with the original."""
+    from PIL import ImageChops
+    doc = Document(Path("test.png"), patterned)
+    sizes = []
+    difference = ImageChops.difference
+    monkeypatch.setattr(ImageChops, "difference", lambda a, b: sizes.append(a.size) or difference(a, b))
+    stroke = Stroke(doc, Tool("fill", 8))
+    stroke.add((20, 20))
+    stroke.finish()
+    assert doc.edited and sizes and all(size != patterned.size for size in sizes)
+    # Back to the original: then (only then) the whole image is compared, and it is not edited.
+    sizes.clear()
+    doc.undo()
+    assert not doc.edited

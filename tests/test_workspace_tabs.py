@@ -172,6 +172,7 @@ def test_failed_save_prevents_application_close(qtbot, tabs, tmp_path, patterned
     def fail(*args, **kwargs):
         raise ImageProblem("synthetic save failure")
     monkeypatch.setattr(module, "save_image", fail)
+    monkeypatch.setattr("sumire.batch_features.save_image", fail)  # whole-list work saves from here
     tabs.close()
     qtbot.waitUntil(lambda: page.save_failed and not page.saving)
     assert tabs.isVisible() and tabs.tabs.count() == 1 and page.document.dirty
@@ -179,7 +180,7 @@ def test_failed_save_prevents_application_close(qtbot, tabs, tmp_path, patterned
 
 
 def test_successful_save_then_close_all_returns_to_welcome(qtbot, tabs, tmp_path, patterned):
-    a = open_page(qtbot, tabs, picture(tmp_path / "a.png", patterned))
+    open_page(qtbot, tabs, picture(tmp_path / "a.png", patterned))
     b = open_page(qtbot, tabs, picture(tmp_path / "b.png", patterned), "new")
     draw(b)
     tabs.close_all_tabs()
@@ -190,7 +191,7 @@ def test_successful_save_then_close_all_returns_to_welcome(qtbot, tabs, tmp_path
 def test_metadata_buttons_are_visible_and_scope_is_one_tab(qtbot, tabs, tmp_path, patterned):
     one = picture(tmp_path / "one.png", patterned)
     two = picture(tmp_path / "two.png", patterned)
-    a = open_page(qtbot, tabs, one)
+    open_page(qtbot, tabs, one)
     b = open_page(qtbot, tabs, two, "new")
     assert b.metadata_delete_button.isVisible() and b.batch_delete_button.isVisible()
     assert not tabs.welcome.metadata_delete_button.isVisible()
@@ -370,7 +371,7 @@ def test_batch_metadata_button_processes_all_current_tab_images_only(qtbot, tabs
     b = picture(a.parent / "b.png", patterned)
     other = picture(tmp_path / "other" / "c.png", patterned)
     first = open_page(qtbot, tabs, a.parent)
-    second = open_page(qtbot, tabs, other, "new")
+    open_page(qtbot, tabs, other, "new")
     tabs.tabs.setCurrentWidget(first)
     first.batch_delete_button.click()
     qtbot.waitUntil(lambda: first.batch_job is None and first.document.output is not None, timeout=15000)

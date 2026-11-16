@@ -83,10 +83,12 @@ def test_save_failure_is_shown_until_the_next_save(qtbot, window, monkeypatch):
     def fail(*args, **kwargs):
         raise ImageProblem("synthetic failure")
     monkeypatch.setattr(module, "save_image", fail)
+    monkeypatch.setattr("sumire.batch_features.save_image", fail)  # whole-list work saves from here
     window.save()
     qtbot.waitUntil(lambda: not window.saving)
     assert "保存失敗" in window.save_state.text()
     monkeypatch.setattr(module, "save_image", original)
+    monkeypatch.setattr("sumire.batch_features.save_image", original)  # whole-list work saves from here
     window.save()
     wait_saved(qtbot, window)
     assert "保存済み" in window.save_state.text()

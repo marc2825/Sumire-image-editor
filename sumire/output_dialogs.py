@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QRadioButton, QScrollArea, QSlider, QSpinBox, QVBoxLayout, QWidget,
 )
 
-from .collage import CollageSpec, FreeLayout, check_canvas, collage_layouts, render_collage, render_free_collage
+from .collage import MAX_COLLAGE, CollageSpec, FreeLayout, check_canvas, collage_layouts, render_collage, render_free_collage
 from .convert import Encoding, TARGETS, encode, size_summary, writable
 from .editing import UPSCALE_FACTORS, upscaled_size
 from .imaging import HEIF_PLUGIN, MAX_DIMENSION, ImageProblem
@@ -133,6 +133,7 @@ class DestinationChooser(QWidget):
             raise ImageProblem(problem)
         if self.inside.isChecked():
             return self.parent_folder.resolve() if self.fixed_names else (self.parent_folder / self.name.text().strip()).resolve()
+        assert self.chosen is not None  # problem() reports a folder not chosen yet
         return self.chosen
 
 
@@ -251,6 +252,55 @@ class LabelExportDialog(QDialog):
         if self.label() == "all":
             return {label: folder / self.labels[label] for label in self.selected_labels()}
         return {self.label(): folder}
+
+
+class MergeLabelFoldersDialog(QDialog):
+    """Gather the images of the label folders (採用・保留・不採用) into one folder."""
+
+    def __init__(self, root: Path, counts: dict, parent=None):
+        super().__init__(parent)
+        self.root = Path(root)
+        self.setWindowTitle(tr("ラベルのフォルダーをまとめる"))
+        self.setMinimumWidth(480)
+        layout = QVBoxLayout(self)
+        total = sum(counts.values())
+        layout.addWidget(QLabel(tr("{folders}つのフォルダーの画像 {count} 枚を、1つのフォルダーにまとめます。").format(folders=len(counts), count=total)))
+        layout.addWidget(faint("、".join(tr("{name}（{count}枚）").format(name=folder.name, count=count) for folder, count in counts.items())))
+        self.group = QButtonGroup(self)
+        self.back = QRadioButton(tr("「{name}」に戻す").format(name=self.root.name or str(self.root)))
+        self.new = QRadioButton(tr("新しいフォルダーにまとめる"))
+        self.back.setChecked(True)
+        for button in (self.back, self.new):
+            self.group.addButton(button)
+            layout.addWidget(button)
+        self.name = QLineEdit(tr("まとめ"))
+        self.name.setContentsMargins(26, 0, 0, 0)
+        layout.addWidget(self.name)
+        self.remove_empty = QCheckBox(tr("空になったラベルのフォルダーを削除する"))
+        self.remove_empty.setChecked(True)
+        layout.addWidget(self.remove_empty)
+        layout.addWidget(faint(tr("画像ファイルはそのまま移し、ラベル・メモ・タグも一緒に移ります。同じ名前の画像があれば _2 などを付けます。"
+                                  "「直前の整理操作を戻す」で元のフォルダーに戻せます。ほかのファイルが残ったフォルダーは削除しません。")))
+        self.problem = QLabel()
+        self.problem.setObjectName("danger")
+        layout.addWidget(self.problem)
+        buttons, self.ok = dialog_buttons(self, tr("{count}枚をまとめる").format(count=total))
+        layout.addWidget(buttons)
+        self.group.buttonToggled.connect(self.refresh)
+        self.name.textChanged.connect(self.refresh)
+        self.refresh()
+
+    def refresh(self, *_args):
+        self.name.setEnabled(self.new.isChecked())
+        problem = folder_name_problem(self.name.text().strip()) if self.new.isChecked() else ""
+        if not problem and self.new.isChecked() and (self.root / self.name.text().strip()).exists():
+            target = self.root / self.name.text().strip()
+            problem = "" if target.is_dir() and not target.is_symlink() else tr("同じ名前のファイルがあります。別の名前にしてください。")
+        self.problem.setText(problem)
+        self.ok.setEnabled(not problem)
+
+    def destination(self) -> Path:
+        return self.root / self.name.text().strip() if self.new.isChecked() else self.root
 
 
 COMPRESS_OPTIONS = (
@@ -558,17 +608,19 @@ class CollageDialog(QDialog):
     to the collage; the image files never change.
     """
 
-    def __init__(self, names, images, parent=None):
+    def __init__(self, names, images, parent=None, loader=None):
         super().__init__(parent)
-        from .collage_canvas import CollageCanvas
         self.setWindowTitle(tr("コラージュを作成"))
         self.names = list(names)
         self.sources = list(images)
+        # ``loader(path)`` reads an added image file as metadata-free pixels.
+        self.loader = loader
         self.free_started = False
         self.resize(1000, 680)
-        layout = QHBoxLayout(self)
+        self.main_layout = layout = QHBoxLayout(self)
         side = QVBoxLayout()
-        side.addWidget(QLabel(tr("{count}枚を1枚にまとめます。").format(count=len(images))))
+        self.count_label = QLabel()
+        side.addWidget(self.count_label)
         self.form = form = QFormLayout()
         self.arrangement = QComboBox()
         self.arrangement.addItem(tr("格子に並べる"), "grid")
@@ -576,8 +628,6 @@ class CollageDialog(QDialog):
         self.arrangement.setToolTip(tr("自由に配置：画像をドラッグして動かし、角をドラッグして拡大・縮小します。クリックした画像が前面に来ます。"))
         form.addRow(tr("配置"), self.arrangement)
         self.layout_combo = QComboBox()
-        for title, rows, columns in collage_layouts(len(images)):
-            self.layout_combo.addItem(title, (rows, columns))
         form.addRow(tr("並べ方"), self.layout_combo)
         self.fit = QComboBox()
         self.fit.addItem(tr("全体を収める（余白あり）"), "contain")
@@ -615,9 +665,16 @@ class CollageDialog(QDialog):
         self.image_list = QListWidget()
         self.image_list.setIconSize(QSize(40, 40))
         self.image_list.setAccessibleName(tr("コラージュにする画像"))
-        for name in self.names:
-            self.image_list.addItem(QListWidgetItem(name))
         side.addWidget(self.image_list, 1)
+        images_row = QHBoxLayout()
+        self.add_button = QPushButton(tr("画像を追加…"))
+        self.add_button.setToolTip(tr("ほかの画像ファイルを加えます（{MAX_COLLAGE}枚まで）。").format(MAX_COLLAGE=MAX_COLLAGE))
+        self.remove_button = QPushButton(tr("取り除く"))
+        self.remove_button.setToolTip(tr("選んだ画像をコラージュから外します。画像ファイルは変わりません。"))
+        images_row.addWidget(self.add_button)
+        images_row.addWidget(self.remove_button)
+        images_row.addStretch(1)
+        side.addLayout(images_row)
         crop_row = QHBoxLayout()
         self.crop_button = QPushButton(tr("切り抜く"))
         self.crop_button.setToolTip(tr("選んだ画像の切り抜き枠を、右のキャンバスに表示します。"))
@@ -631,12 +688,8 @@ class CollageDialog(QDialog):
         buttons, self.ok = dialog_buttons(self, tr("保存先を選ぶ…"))
         side.addWidget(buttons)
         layout.addLayout(side, 2)
-        self.canvas = CollageCanvas(images)
-        self.canvas.setAccessibleName(tr("コラージュのキャンバス"))
-        layout.addWidget(self.canvas, 3)
-        for index in range(len(images)):
-            self._show_item(index)
-        self.image_list.setCurrentRow(0)
+        self.canvas = None
+        self.set_images(self.names, self.sources)
 
         for combo in (self.arrangement, self.layout_combo, self.fit, self.background):
             combo.currentIndexChanged.connect(self.update_layout)
@@ -647,11 +700,86 @@ class CollageDialog(QDialog):
         self.image_list.itemDoubleClicked.connect(lambda item: self.canvas.start_crop(self.image_list.row(item)))
         self.crop_button.clicked.connect(lambda: self.canvas.start_crop(self.image_list.currentRow()))
         self.uncrop_button.clicked.connect(lambda: self.canvas.reset_crop(self.image_list.currentRow()))
-        self.canvas.changed.connect(self.canvas_changed)
-        self.canvas.selectionChanged.connect(self.canvas_selected)
-        self.canvas.croppingChanged.connect(self.show_hint)
+        self.add_button.clicked.connect(self.choose_images)
+        self.remove_button.clicked.connect(lambda: self.remove_image(self.image_list.currentRow()))
         self.update_layout()
         self.show_hint(False)
+
+    def set_images(self, names, images, crops=None):
+        """Use these images (crops kept by the caller where they still apply); the canvas starts afresh."""
+        from .collage_canvas import CollageCanvas
+        if self.canvas is not None:
+            self.canvas.finish_crop()
+        self.names, self.sources = list(names), list(images)
+        canvas = CollageCanvas(self.sources)
+        if crops:
+            canvas.crops = list(crops)
+        canvas.setAccessibleName(tr("コラージュのキャンバス"))
+        canvas.changed.connect(self.canvas_changed)
+        canvas.selectionChanged.connect(self.canvas_selected)
+        canvas.croppingChanged.connect(self.show_hint)
+        if self.canvas is None:
+            self.main_layout.addWidget(canvas, 3)
+        else:
+            self.main_layout.replaceWidget(self.canvas, canvas)
+            self.canvas.deleteLater()
+        self.canvas = canvas
+        self.free_started = False
+        self.layout_combo.blockSignals(True)
+        self.layout_combo.clear()
+        for title, rows, columns in collage_layouts(len(self.sources)):
+            self.layout_combo.addItem(title, (rows, columns))
+        self.layout_combo.blockSignals(False)
+        self.count_label.setText(tr("{count}枚を1枚にまとめます。").format(count=len(self.sources)))
+        self.image_list.blockSignals(True)
+        self.image_list.clear()
+        for name in self.names:
+            self.image_list.addItem(QListWidgetItem(name))
+        self.image_list.blockSignals(False)
+        for index in range(len(self.sources)):
+            self._show_item(index)
+        self.image_list.setCurrentRow(0)
+        self.add_button.setEnabled(self.loader is not None and len(self.sources) < MAX_COLLAGE)
+        self.remove_button.setEnabled(len(self.sources) > 1)
+
+    def add_images(self, paths):
+        """Add image files (up to the limit); returns the problems of files that could not be read."""
+        problems = []
+        names, images, crops = list(self.names), list(self.sources), list(self.canvas.crops)
+        for path in paths:
+            if len(images) >= MAX_COLLAGE:
+                problems.append(tr("コラージュにできるのは{MAX_COLLAGE}枚までです。").format(MAX_COLLAGE=MAX_COLLAGE))
+                break
+            try:
+                image = self.loader(Path(path))
+            except ImageProblem as error:
+                problems.append(f"{Path(path).name}: {error}")
+                continue
+            names.append(Path(path).name)
+            images.append(image)
+            crops.append((0, 0, image.width, image.height))
+        if len(images) != len(self.sources):
+            self.set_images(names, images, crops)
+            self.update_layout()
+        return problems
+
+    def choose_images(self):
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from .imaging import SUPPORTED
+        pattern = " ".join("*" + suffix for suffix in sorted(SUPPORTED))
+        raw, _ = QFileDialog.getOpenFileNames(self, tr("コラージュに加える画像"), "", tr("画像") + f" ({pattern})")
+        if raw:
+            problems = self.add_images(raw)
+            if problems:
+                QMessageBox.warning(self, tr("加えられなかった画像があります"), "\n".join(problems))
+
+    def remove_image(self, row):
+        if not 0 <= row < len(self.sources) or len(self.sources) <= 1:
+            return
+        self.canvas.finish_crop()
+        keep = [index for index in range(len(self.sources)) if index != row]
+        self.set_images([self.names[i] for i in keep], [self.sources[i] for i in keep], [self.canvas.crops[i] for i in keep])
+        self.update_layout()
 
     # --- settings ----------------------------------------------------------------
     def free(self):

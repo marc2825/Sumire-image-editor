@@ -1,6 +1,6 @@
 # Sumīre — 图像修整
 
-[![version](https://img.shields.io/badge/version-1.1.1-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.zh-CN.txt)
+[![version](https://img.shields.io/badge/version-1.2.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.zh-CN.txt)
 
 [日本語](README.md) · [English](README.en.md) · 简体中文
 
@@ -22,7 +22,7 @@ Sumīre 是一款适用于 Windows 11 的应用，可以用马赛克或模糊隐
 - **隐藏**：马赛克、模糊、填充。除画笔外，还可用矩形、椭圆、多边形、套索指定范围。支持橡皮擦、撤销 / 重做以及与原图比较。
 - **查看与删除元数据**：以列表查看 EXIF、PNG 文本、生成提示词等，可逐张或批量删除。NovelAI 嵌入透明度中的信息（Stealth PNGInfo）和 ChatGPT 等图像生成 AI 添加的 C2PA（内容凭证）也会删除，并确认没有残留。默认情况下，保存时会保留元数据。
 - **之后恢复**：可保留删除前的元数据，恢复到另存的副本中。
-- **分拣**：采用、待定、不采用标签（按标签分入文件夹，也可在设置标签时自动移入）、筛选、工作标签页、文件夹间移动、编号重命名、删除重复、多张比较。
+- **分拣**：采用、待定、不采用标签（按标签分入文件夹，也可在设置标签时自动移入）、自由标记、筛选、工作标签页、文件夹间移动、编号重命名、删除重复、多张比较。
 - **导出**：转换格式（PNG、JPEG、WebP、AVIF、BMP、TIFF、GIF）、压缩体积、拼贴。
 - **调整**：裁剪、调整尺寸、旋转、翻转、色调（亮度、对比度、饱和度、色相、曝光、色温等）、超分辨率放大。
 - **分享**：将不含元数据的图像交给 NovelAI 的 Image2Image 或其他应用。

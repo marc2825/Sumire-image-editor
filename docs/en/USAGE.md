@@ -52,7 +52,7 @@ Images and folders open in tabs. The list, edits and save method are separate fo
 
 ## Saving
 
-Choose the save method at the first start; change it later with “Overwrite · auto-save ▾” at the top right. If you used Sumīre before 0.4.0, or closed the first-start window, it is set to overwrite with auto-save.
+Choose the save method at the first start; change it later with “Overwrite · auto-save ▾” at the top right. If you used Sumīre before 0.4.0, it stays on overwrite with auto-save. If you closed the first-start window without choosing, originals stay unchanged and images are auto-saved to a separate folder.
 
 - **Overwrite the original**: replaces PNG, JPEG and WebP files in the same place, with the same name and format. Other formats cannot be overwritten; save them to a separate folder. The first overwrite after each start asks first (“Don't show this again” stops it).
 - **Save to a separate folder**: saves into `Sumīre` inside the image's folder and leaves the original unchanged. The destination and format (PNG, JPEG, lossless WebP) can be changed.
@@ -98,7 +98,10 @@ All of these change the image and the mask together, and Undo reverts them, size
 
 ## Sorting
 
-Label images with “Accept”, “Hold” and “Reject” at the bottom right (1, 2, 3). Press again to remove a label; Alt+0 also removes it. With several images selected, all of them are labelled.
+Label images with “Accept”, “Hold” and “Reject” at the bottom right (1, 2, 3). Pressing again keeps the label (so you can keep going); to remove it, use “Remove label” (Alt+0). With several images selected, all of them are labelled (Ctrl+click adds or removes one image, Shift+click selects a range).
+
+- **Tags**: right-click → “Tags…” adds or removes free-form tags, separate from labels (for several images at once). Tick to add, untick to remove; a half tick leaves them as they are. Find them with “Filter by tag” and the search (names, notes and tags). Tags show on the second line of the list and move with renames and moves.
+- **Gather the label folders**: the list's “⋯ → Gather the label folders…” collects the images of the Accept / Hold / Reject folders in the tab's folder into that folder (or a new one), with their labels, notes and tags; emptied folders can be removed. “Undo the last organising step” brings them back.
 
 - Labels are saved at once and survive restarts, saving, renaming and moving between folders. They never change the image.
 - The filter button shows images by label. Counts appear below the list.
@@ -132,7 +135,7 @@ Renaming never rewrites the image. If a file with the new name exists, renaming 
 | Save as | “⋯”, right-click | Saves a new file with the name and format you choose |
 | Convert format | Right-click, the list's “⋯” | Converts to PNG, JPEG, WebP, AVIF, BMP, TIFF or GIF |
 | Reduce file size | Right-click, the list's “⋯” | Makes files smaller, either keeping quality or allowing quality loss |
-| Make a collage | Select 2 or more, right-click | Arranges 2–16 images in a grid (side by side, stacked, 2×2 and so on) or freely, into one image |
+| Make a collage | Select 1 or more, right-click | Arranges 1–16 images in a grid (side by side, stacked, 2×2 and so on) or freely, into one image; “Add images…” and “Remove” change the number |
 
 - Originals are never changed. Converting and reducing size create a “Converted” or “Compressed” folder in the open folder (the destination can be changed). Files with the same name are never overwritten.
 - When you choose a method, the first image is actually converted to show the result, for example “Original 3.2 MB → Compressed 740 KB (77% smaller)”. On export, every image is converted and the total is checked before anything is written; cancelling leaves nothing behind. Shrinking the long side is also available.
@@ -144,7 +147,7 @@ Renaming never rewrites the image. If a file with the new name exists, renaming 
 
 ## Copy and paste
 
-Ctrl+C copies the result; Ctrl+V (or “File → Open the image on the clipboard”) opens the clipboard image in a new tab. Neither includes metadata. While you type text, text copy and paste take priority.
+Ctrl+C copies the result; Ctrl+V (or “File → Open the image on the clipboard”) opens the clipboard image in a new tab. Neither includes metadata. With the list focused, Ctrl+C and Ctrl+X copy or cut the image files, and Ctrl+V pastes image files from the clipboard into the tab's folder (moving them when cut; works with Explorer too). While you type text, text copy and paste take priority.
 Pasted images start with manual saving, and the first save asks where to save. To restore the tab, pasted images are kept in `clipboard-images` next to the settings. You can delete them after quitting.
 
 ## Edit projects
@@ -164,7 +167,7 @@ Choose from “Share” to the right of the image name. Each hands over the edit
 2. Sign in to NovelAI and paste, or drag the image from Sumīre's window.
 3. Choose “Image2Image”.
 
-The original file name and prompts are not handed over. With “Settings → NovelAI” on, you can crop and shrink the image before handing it over. The steps follow [NovelAI's documentation](https://docs.novelai.net/en/image/controltools).
+The original file name and prompts are not handed over. Under “Settings → NovelAI” you can turn on cropping and shrinking before handing over, and “Include the generation info (metadata) in images for NovelAI”, which lets NovelAI read the original's prompt and settings (images handed to other apps never carry it). The steps follow [NovelAI's documentation](https://docs.novelai.net/en/image/controltools).
 
 ## Settings
 
@@ -176,7 +179,7 @@ Open them with the gear at the top right and choose a topic on the left. “Rese
 | Records | Switching where the records are kept, and deleting them |
 | Shortcuts | Changing keys |
 | Display and import | Display language, navigator, picking up images added to the folder, next after labelling, sorting into label folders automatically, confirmation when quitting, full screen |
-| NovelAI | Cropping and shrinking before handing over |
+| NovelAI | Cropping and shrinking before handing over; including the generation info for NovelAI |
 | Windows | Adding and removing the right-click entry |
 | About | Version, licences, details of the last error |
 

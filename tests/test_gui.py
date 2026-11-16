@@ -124,6 +124,7 @@ def test_save_failure_keeps_image_and_cancels_navigation(qtbot, window, monkeypa
     def fail(*args, **kwargs):
         raise ImageProblem("テスト用の保存失敗")
     monkeypatch.setattr(module, "save_image", fail)
+    monkeypatch.setattr("sumire.batch_features.save_image", fail)  # whole-list work saves from here
     original = window.document.path.read_bytes()
     window.overwrite.setChecked(overwrite)
     draw(window)
@@ -231,6 +232,7 @@ def test_overwrite_batch_removes_metadata_and_reprocesses_saved_images(qtbot, wi
         calls.append(result.path)
         return result
     monkeypatch.setattr(module, "save_image", track)
+    monkeypatch.setattr("sumire.batch_features.save_image", track)  # whole-list work saves from here
     folder = window.document.path.parent
     paths = list(window.model.paths)
     for path in paths:
@@ -323,6 +325,7 @@ def test_edits_during_save_flush_latest_before_navigation(qtbot, window, monkeyp
             raise ImageProblem("テスト待機がタイムアウト")
         return original(*args, **kwargs)
     monkeypatch.setattr(module, "save_image", slow)
+    monkeypatch.setattr("sumire.batch_features.save_image", slow)  # whole-list work saves from here
     try:
         draw(window, (30, 30), (50, 30))
         qtbot.waitUntil(lambda: started.is_set() and window.canvas.ready, timeout=10000)
@@ -412,6 +415,7 @@ def test_batch_reprocesses_saved_edits_without_duplicates(qtbot, window, monkeyp
         calls.append(result.path)
         return result
     monkeypatch.setattr(module, "save_image", track)
+    monkeypatch.setattr("sumire.batch_features.save_image", track)  # whole-list work saves from here
     window.start_batch()
     qtbot.waitUntil(lambda: window.batch_job is None and "一括処理完了" in window.status.text(), timeout=15000)
     assert "保存 3 / 失敗 0" in window.status.text()
@@ -612,6 +616,7 @@ def test_batch_progress_reports_failures_and_completion(qtbot, window, monkeypat
             raise ImageProblem("synthetic failure")
         return original(*args, **kwargs)
     monkeypatch.setattr(module, "save_image", fail_second)
+    monkeypatch.setattr("sumire.batch_features.save_image", fail_second)  # whole-list work saves from here
     window.start_batch()
     assert window.batch_progress.isVisible()
     qtbot.waitUntil(lambda: window.batch_job is None and "一括処理完了" in window.status.text(), timeout=10000)
@@ -642,6 +647,7 @@ def test_batch_cancel_keeps_completed_receipts_and_can_rerun_all(qtbot, window, 
             kwargs["cancel"].set()
         return result
     monkeypatch.setattr(module, "save_image", cancel_after_first)
+    monkeypatch.setattr("sumire.batch_features.save_image", cancel_after_first)  # whole-list work saves from here
     window.start_batch()
     qtbot.waitUntil(lambda: window.batch_job is None and "一括処理を中止" in window.status.text(), timeout=10000)
     index = window.source_index(window.document.path) if overwrite else window.receipts
@@ -713,7 +719,10 @@ def test_review_labels_persist_through_save_sort_rename_and_reopen(qtbot, window
     window.open_inputs([str(target)])
     qtbot.waitUntil(lambda: not window.loading and window.canvas.ready and window.document.path == target, timeout=10000)
     assert window.model.labels[target] == "accepted"
+    # Pressing the same label again keeps it; 「ラベルを解除」 removes it.
     QTest.mouseClick(window.label_buttons["accepted"], Qt.MouseButton.LeftButton)
+    assert window.model.labels[target] == "accepted" and window.label_buttons["accepted"].isChecked()
+    window.set_review_label(None)
     assert target not in window.model.labels and ReviewLabels(target.parent).get(target) is None
 
 
@@ -850,6 +859,7 @@ def test_multi_selection_labels_and_save_only_selected(qtbot, window, monkeypatc
         calls.append(kwargs["source"])
         return original(*args, **kwargs)
     monkeypatch.setattr(module, "save_image", record)
+    monkeypatch.setattr("sumire.batch_features.save_image", record)  # whole-list work saves from here
     window.save_selected()
     qtbot.waitUntil(lambda: window.batch_job is None and window.canvas.ready, timeout=10000)
     assert calls == [paths[0], paths[2]]
@@ -912,6 +922,7 @@ def test_failure_reasons_are_shown_after_the_batch(qtbot, window, monkeypatch, b
             raise ImageProblem("書き込み先のテストエラー")
         return original(*args, **kwargs)
     monkeypatch.setattr(module, "save_image", save)
+    monkeypatch.setattr("sumire.batch_features.save_image", save)  # whole-list work saves from here
     window.start_batch()
     qtbot.waitUntil(lambda: window.batch_job is None and window.canvas.ready, timeout=10000)
     assert window.batch_failures == {window.model.paths[1]: "書き込み先のテストエラー"}

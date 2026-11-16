@@ -63,7 +63,7 @@ def benchmark(samples):
 
             document = Document(root / "stroke.png", source)
             effect = Image.new("RGBA", source.size, "black")
-            def begin_stroke():
+            def begin_stroke(document=document, effect=effect):
                 stroke = Stroke(document, Tool("fill", diameter=10), effect)
                 stroke.cancel()
             results["stroke_begin_ms"] = measure(begin_stroke, samples)

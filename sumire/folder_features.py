@@ -11,10 +11,10 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QInputDialog, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QAbstractItemView, QDialog, QHBoxLayout, QInputDialog, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 
 from .export import Cancelled, check_cancel
-from .folders import create_folder, move_image, move_images, subfolders
+from .folders import create_folder, folder_images, label_folders, move_image, move_images, subfolders
 from .icons import icon
 from .imaging import ImageProblem
 from .library import LibraryView
@@ -288,7 +288,7 @@ class FolderFeatures:
                 self.error(text + tr(" / 移動できなかった画像 {count}枚").format(count=len(failed)))
                 self.show_text_window(tr("移動できなかった画像"), "\n\n".join(f"{path}\n{reason}" for path, reason in failed.items()))
             else:
-                self.info(text)
+                self.report(text)
 
         def fail(message):
             self.finalizing = False
@@ -371,7 +371,199 @@ class FolderFeatures:
                 self.error(text + tr(" / 移動できなかった画像 {count}枚").format(count=len(failed)))
                 self.show_text_window(tr("移動できなかった画像"), "\n\n".join(f"{path}\n{reason}" for path, reason in failed.items()))
             else:
-                self.info(text)
+                self.report(text)
+
+        def fail(message):
+            self.finalizing = False
+            self.refresh_folders()
+            self.update_controls()
+            self.error(message)
+
+        self.run_job(work, done, fail)
+
+    def paste_folder(self):
+        """Where pasted files go: the folder shown in the tab, or the shown image's folder."""
+        folder = self.browsed_folder()
+        if folder is None and self.document is not None and not self.is_clipboard_path(self.document.path):
+            folder = self.document.path.parent
+        return folder
+
+    def clip_files(self, cut=False):
+        """Ctrl+C / Ctrl+X in the list: the selected image files (or the shown one) on the clipboard."""
+        from PySide6.QtWidgets import QApplication
+        from .file_clipboard import file_mime
+        paths = [path for path in self.selected_or_current() if not self.is_clipboard_path(path)]
+        if not paths or self.busy():
+            return
+        QApplication.clipboard().setMimeData(file_mime(paths, cut))
+        self.info((tr("切り取りました · {count}枚（貼り付けると移動します）") if cut else tr("ファイルをコピーしました · {count}枚")).format(count=len(paths)))
+
+    def paste_files(self):
+        """Ctrl+V with files on the clipboard: copy them (or move them, if cut) into the tab's folder.
+
+        Returns False when the clipboard has no image files (the caller then pastes a picture).
+        """
+        from PySide6.QtWidgets import QApplication
+        from .file_clipboard import clipboard_files, copy_files
+        paths, cut = clipboard_files(QApplication.clipboard().mimeData())
+        if not paths:
+            return False
+        if self.busy() or self.saving:
+            return True
+        folder = self.paste_folder()
+        if folder is None:
+            self.error(tr("貼り付け先のフォルダーがありません。フォルダーを開いてから貼り付けてください。"))
+            return True
+        if cut:
+            sources = [path for path in paths if path.resolve().parent != folder.resolve()]
+            if not sources:
+                self.info(tr("同じフォルダーには移動できません。"))
+                return True
+            unsaved = [path for path in sources if path in self.documents and self.documents[path].dirty]
+            if unsaved:
+                self.error(tr("未保存の編集がある画像は移動できません。保存してから移動してください。"))
+                return True
+        self.autosave_timer.stop()
+        self.finalizing = True
+        self.update_controls()
+        self.info(tr("貼り付け中…"))
+
+        def work(cancel):
+            if not cut:
+                return copy_files(paths, folder, cancel)
+            moved, failed = move_images(sources, folder, cancel=cancel)
+            return moved, failed
+
+        def done(result):
+            self.finalizing = False
+            changed, failed = result
+            here = [path for path in changed.values() if path.parent == folder and path not in self.model.rows]
+            if cut and changed:
+                gone = [path for path in changed if path in self.model.rows]
+                if gone:
+                    self.exclude_from_list(gone, message=False)
+                    self.excluded_paths.difference_update(gone)
+                self.operation_history.append(("move", {new: old for old, new in changed.items()}))
+                QApplication.clipboard().clear()  # cut files paste once, as in Explorer
+            if here and self.browsed_folder() == folder:
+                self.replace_list(list(self.model.paths) + here)
+                self.refresh_record_indexes()
+                if not self.document:
+                    self.ensure_visible_current(here[0])
+            self.refresh_folders()
+            self.update_controls()
+            key = self.shortcut_hint("undo_organize")
+            text = (tr("移動しました · {count}枚").format(count=len(changed)) + (tr("（{key}で戻せます）").format(key=key) if key and changed else "")
+                    if cut else tr("貼り付けました · {count}枚").format(count=len(changed)))
+            if failed:
+                self.error(text + tr(" / 貼り付けられなかった画像 {count}枚").format(count=len(failed)))
+            else:
+                self.report(text)
+
+        def fail(message):
+            self.finalizing = False
+            self.update_controls()
+            self.error(message)
+
+        self.run_job(work, done, fail)
+        return True
+
+    def merge_target(self):
+        """(the folder holding the label folders, those folders) for this tab, or None."""
+        folder = self.browsed_folder()
+        if folder is None:
+            return None
+        root, found = label_folders(folder)
+        return (root, found) if found else None
+
+    def merge_label_folders(self):
+        """Gather the images of the label folders (採用・保留・不採用) into one folder."""
+        from .output_dialogs import MergeLabelFoldersDialog
+        target = self.merge_target() if not self.busy() and not self.saving else None
+        if target is None:
+            self.info(tr("このタブのフォルダーには、採用・保留・不採用のフォルダーがありません。"))
+            return
+        root, found = target
+        counts = {folder: len(folder_images(folder)) for folder in found}
+        counts = {folder: count for folder, count in counts.items() if count}
+        if not counts:
+            self.info(tr("ラベルのフォルダーに画像がありません。"))
+            return
+        dialog = MergeLabelFoldersDialog(root, counts, self)
+        if not self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted) or self.busy() or self.saving:
+            return
+        destination, remove_empty = dialog.destination(), dialog.remove_empty.isChecked()
+        current = self.document.path if self.document else None
+        if current is not None and current.parent in counts and self.document.dirty:
+            self.guard(lambda: self._merge_label_folders(list(counts), destination, remove_empty))
+        else:
+            self._merge_label_folders(list(counts), destination, remove_empty)
+
+    def _merge_label_folders(self, folders, destination, remove_empty):
+        if self.busy() or self.saving:
+            return
+        unsaved = [path for path, document in self.documents.items() if document.dirty and path.parent in folders]
+        if unsaved:
+            self.error(tr("未保存の編集がある画像は移動できません。保存してから移動してください。"))
+            return
+        self.autosave_timer.stop()
+        self.finalizing = True
+        self.update_controls()
+        self.info(tr("ラベルのフォルダーをまとめています…"))
+        browsed = self.browsed_folder()
+
+        def work(cancel):
+            moved, failed, kept = {}, {}, []
+            try:
+                if destination.is_symlink():
+                    raise OSError()
+                destination.mkdir(exist_ok=True)
+            except OSError:
+                return moved, {folder: tr("まとめ先のフォルダーを作れません。場所とアクセス権を確認してください。") for folder in folders}, kept
+            for folder in folders:
+                if folder == destination:
+                    continue
+                done_here, failed_here = move_images(folder_images(folder), destination, cancel=cancel)
+                moved.update(done_here)
+                failed.update(failed_here)
+                if remove_empty:
+                    from .storage import remove_empty_records
+                    try:
+                        remove_empty_records(folder)  # Sumīre's own records, once nothing is recorded in them
+                        folder.rmdir()  # only when nothing at all is left in it
+                    except OSError:
+                        kept.append(folder)
+            return moved, failed, kept
+
+        def done(result):
+            self.finalizing = False
+            moved, failed, kept = result
+            if moved:
+                self.operation_history.append(("move", {new: old for old, new in moved.items()}))
+            gone = [path for path in moved if path in self.model.rows]
+            if gone:
+                self.exclude_from_list(gone, message=False)
+                self.excluded_paths.difference_update(gone)
+            if browsed is not None and (browsed in folders or browsed == destination) and destination.is_dir():
+                # Show where the images are now.
+                if browsed == destination:
+                    self.replace_list(list(self.model.paths) + [path for path in moved.values() if path not in self.model.rows])
+                    self.refresh_record_indexes()
+                else:
+                    self.open_folder_in_tab(destination) if self.folder_root is not None and destination.is_relative_to(self.folder_root) \
+                        else self.load_inputs([str(destination)])
+            self.refresh_folders()
+            self.update_controls()
+            key = self.shortcut_hint("undo_organize")
+            text = tr("「{name}」にまとめました · {count}枚").format(name=destination.name or str(destination), count=len(moved))
+            text += tr("（{key}で戻せます）").format(key=key) if moved and key else ""
+            if remove_empty and kept:
+                text += tr(" · ほかのファイルが残ったフォルダーは削除していません")
+            if failed:
+                self.error(text + tr(" / 移動できなかった画像 {count}枚").format(count=len(failed)))
+                self.show_text_window(tr("移動できなかった画像"), "\n\n".join(f"{path}\n{reason}" for path, reason in failed.items()))
+            else:
+                self.report(text)
 
         def fail(message):
             self.finalizing = False
@@ -386,6 +578,8 @@ class FolderFeatures:
         returned, problems = [], []
         for moved, original in mapping.items():
             try:
+                if not original.parent.exists():
+                    original.parent.mkdir()  # a label folder removed when its images were gathered
                 returned.append(move_image(moved, original.parent, name=original.name))
             except (ImageProblem, OSError):
                 problems.append(moved)

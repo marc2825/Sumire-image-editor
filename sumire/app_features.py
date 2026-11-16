@@ -11,12 +11,11 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
     QInputDialog, QLabel, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
-    QToolButton, QVBoxLayout, QWidget,
+    QToolButton, QVBoxLayout,
 )
 
 from . import DISPLAY_VERSION
 from .export import check_cancel, file_digest
-from .imaging import ImageProblem
 from .labels import ReviewLabels
 from .projects import PROJECT_EXTENSIONS, read_project, write_project
 from .session import Receipts
@@ -303,6 +302,8 @@ class AppFeatures:
         self.receipts = Receipts(self.output_folder) if self.output_folder else None
         self.model.labels = {path: self.label_indexes[path.parent].get(path) for path in self.model.paths if self.label_indexes[path.parent].get(path)}
         self.model.notes = {path: self.label_indexes[path.parent].note(path) for path in self.model.paths if self.label_indexes[path.parent].note(path)}
+        self.model.tags = {path: self.label_indexes[path.parent].tags_of(path) for path in self.model.paths if self.label_indexes[path.parent].tags_of(path)}
+        self.refresh_tag_filter()
         if deleted:
             self.operation_history.clear()
             self.filter_combo.blockSignals(True)

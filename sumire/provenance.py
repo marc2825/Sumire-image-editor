@@ -466,16 +466,35 @@ def describe_store(store):
     return rows
 
 
+IMAGE_DATA = re.compile(rb"\xff\xd8\xff|\x89PNG\r\n\x1a\n|GIF8[79]a|RIFF.{4}WEBP|ftyp(?:avif|avis|heic|heix|mif1)", re.DOTALL)
+
+
+def _box_bytes(children, depth=0):
+    for kind, content in children:
+        yield content
+        if kind == b"jumb" and depth < 8:
+            _label, inner = _superbox(content)
+            yield from _box_bytes(inner, depth + 1)
+
+
 def has_thumbnail(store):
-    """Whether any manifest holds a thumbnail (a small copy of an image); an unreadable store counts as yes."""
+    """Whether any manifest holds a picture that may copy an image: a thumbnail, or image data embedded
+    in any other assertion (an ingredient, embedded data). The issuer's icon does not count. An
+    unreadable store counts as yes."""
     try:
         label, manifests = _superbox(next(_boxes(store))[1])
         if label != "c2pa":
             return True
         for _name, children in _labelled(manifests):
             for part, assertions in _labelled(children):
-                if part == "c2pa.assertions" and any((name or "").startswith("c2pa.thumbnail") for name, _ in _labelled(assertions)):
-                    return True
+                if part != "c2pa.assertions":
+                    continue
+                for name, content in _labelled(assertions):
+                    name = name or ""
+                    if name.startswith("c2pa.thumbnail"):
+                        return True
+                    if not name.startswith("c2pa.icon") and any(IMAGE_DATA.search(data) for data in _box_bytes(content)):
+                        return True
         return False
     except (ValueError, StopIteration, IndexError, UnicodeDecodeError, struct.error):
         return True

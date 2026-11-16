@@ -1,0 +1,6 @@
+# Tools that GitHub Actions runs besides the tests. Not part of the Windows build
+# (scripts/windows-build-requirements.txt pins what the distribution is built from).
+ruff==0.17.4
+mypy==2.4.0
+pytest-cov==7.0.0
+coverage==7.17.2

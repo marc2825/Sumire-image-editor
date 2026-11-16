@@ -21,7 +21,7 @@ from .storage import SCHEMAS, TABLES, connect_owned, record_path
 INVALID = '<>:"/\\|?*'
 RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 # Records that belong to the image itself (receipts belong to the output folder).
-MOVED_TABLES = ("review_labels", "review_notes", "edit_masks", "geometry_edits", "metadata_backups")
+MOVED_TABLES = ("review_labels", "review_notes", "review_tags", "edit_masks", "geometry_edits", "metadata_backups")
 
 
 def folder_name_problem(name: str) -> str:
@@ -74,6 +74,31 @@ def label_folder_target(path: Path, label: str) -> Path | None:
         number = found[0][1][1]
         target = root / (names[number] if number < len(names) else REVIEW_LABELS[label])
     return None if target == here else target
+
+
+def label_folders(folder: Path) -> tuple[Path, list[Path]]:
+    """(the folder holding the label folders, those folders) for a tab's folder.
+
+    Inside a label folder (and none below it), its neighbours are the ones.
+    """
+    here = Path(folder)
+    found = [path for path in subfolders(here) if _folder_label(path)]
+    if not found and _folder_label(here):
+        root = here.parent
+        return root, [path for path in subfolders(root) if _folder_label(path)]
+    return here, found
+
+
+def folder_images(folder: Path) -> list[Path]:
+    """The image files directly in ``folder`` (no links, no hidden files), in name order."""
+    from .imaging import SUPPORTED
+    from .library import filename_key
+    try:
+        found = [path for path in Path(folder).iterdir() if path.suffix.lower() in SUPPORTED and path.is_file()
+                 and not path.is_symlink() and not path.name.startswith(".")]
+    except OSError:
+        return []
+    return sorted(found, key=lambda path: (filename_key(path), path.name))
 
 
 def create_folder(parent: Path, name: str) -> Path:
@@ -215,7 +240,9 @@ def move_image(source: Path, folder: Path, *, name: str | None = None, reserved=
 
 def move_images(paths, folder: Path, *, cancel=None, progress=None, expected=None):
     """Move several images; returns ({old: new}, {old: reason})."""
-    moved, failed, reserved = {}, {}, set()
+    moved: dict[Path, Path] = {}
+    failed: dict[Path, str] = {}
+    reserved: set[Path] = set()
     for number, path in enumerate(paths, 1):
         try:
             check_cancel(cancel)

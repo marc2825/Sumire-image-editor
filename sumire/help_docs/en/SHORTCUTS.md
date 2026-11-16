@@ -29,8 +29,9 @@ Keys that act on the image work when the image area is selected. While you type 
 | Weaker / stronger | , / . |
 | Cancel while tracing | Esc |
 | Help | F1 |
-| Copy the result | Ctrl+C |
-| Open the clipboard image | Ctrl+V |
+| Copy (image files in the list, otherwise the result) | Ctrl+C |
+| Cut image files | Ctrl+X |
+| Paste (image files into the tab's folder; a picture opens as new) | Ctrl+V |
 | Full screen | F11 |
 
 ## Fixed keys

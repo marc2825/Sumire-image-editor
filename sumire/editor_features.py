@@ -153,6 +153,10 @@ class EditorFeatures:
         self.run_job(lambda cancel: describe_metadata(source), done, failed)
 
     def copy_image(self):
+        # In the list, Ctrl+C copies the image files (as in Explorer); elsewhere the edited picture.
+        if self.list.hasFocus() and self.selected_or_current():
+            self.clip_files(cut=False)
+            return
         if not self.document or self.busy() or self.saving:
             return
         pixels = self.document.image.copy()
@@ -174,6 +178,8 @@ class EditorFeatures:
 
     def paste_image(self):
         if self.busy() or self.saving:
+            return
+        if self.paste_files():  # image files on the clipboard: paste them into the tab's folder
             return
         image = QApplication.clipboard().image()
         if image.isNull():

@@ -45,6 +45,7 @@ def test_handoff_cleans_up_on_cancel_or_export_failure(tmp_path, patterned, monk
         def fail(*args, **kwargs):
             raise OSError("synthetic failure")
         monkeypatch.setattr(module, "save_image", fail)
+        monkeypatch.setattr("sumire.batch_features.save_image", fail)  # whole-list work saves from here
     with pytest.raises(Cancelled if cancelled else OSError):
         prepare_image(patterned, tmp_path / "original.png", cancel)
     assert list(tmp_path.iterdir()) == []

@@ -31,6 +31,14 @@ Linuxでは `python3 -m venv .venv`、`.venv/bin/python -m pip install -e '.[dev
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
+lint と型検査（GitHub Actions と同じ。道具の版は `scripts/ci-requirements.txt`）：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r scripts\ci-requirements.txt
+.\.venv\Scripts\python.exe -m ruff check sumire scripts tests run_sumire.py
+.\.venv\Scripts\python.exe -m mypy
+```
+
 画面のテストは画面を表示せずに動きます。Windowsの実際の画面で動かすときは、`QT_QPA_PLATFORM=windows` を設定してください。
 
 GitHub Actions（`.github/workflows/tests.yml`）が、push と pull request のたびに、Windows と Linux で訳の点検（`scripts.i18n_check`）と全テストを実行します。パッケージの版は `scripts/windows-build-requirements.txt` のとおりです。
@@ -61,7 +69,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 - Linux上のPythonからWindows版は作れません。
 - コード署名、インストーラー、自動更新はありません。
 
-版の表記：画面・説明書・ZIP の名前（`sumire.DISPLAY_VERSION`）と、pyproject.toml・`sumire.__version__` は同じ `1.1.0` です（1.00.0 だけは表示が2桁、パッケージは PEP 440 の形の 1.0.0）。exe のバージョン情報は、数値が 1.1.0.0、文字列が `1.1.0` です。
+版の表記：画面・説明書・ZIP の名前（`sumire.DISPLAY_VERSION`）と、pyproject.toml・`sumire.__version__` は同じ `1.2.0` です（1.00.0 だけは表示が2桁、パッケージは PEP 440 の形の 1.0.0）。exe のバージョン情報は、数値が 1.2.0.0、文字列が `1.2.0` です。
 
 ### Qt・PySide6 のソースとライセンス文
 
@@ -76,7 +84,7 @@ Qt 6.12.0（qtbase・qtsvg・qtimageformats・qttranslations）と pyside-setup 
 配布物の exe には、画面を表示せずに確かめる機能があります。設定・記録・一時ファイルは指定したフォルダーの中だけに作り、右クリックメニューは登録しません。
 
 ```powershell
-.\dist\Sumire-v1.1.0-win64\sumire.exe --self-test "$env:TEMP\sumire-self-test"
+.\dist\Sumire-v1.2.0-win64\sumire.exe --self-test "$env:TEMP\sumire-self-test"
 ```
 
 フォントの読み込み、PNG・JPEG・WebP・AVIF・BMP・TIFF・GIF の書き出しと読み直し、メタデータと Stealth PNGInfo の削除、Qt の訳、ヘルプ、右クリックメニューに登録するコマンド、読み込んだ Qt の DLL の場所と SHA-256、日本語・英語・簡体字中国語の画面と 125%・150% 相当（`QT_SCALE_FACTOR`）の画面を確かめ、`self-test.json` と画面の画像を書き出します。終了コードが 0 なら、すべて通っています。
@@ -84,7 +92,7 @@ Qt 6.12.0（qtbase・qtsvg・qtimageformats・qttranslations）と pyside-setup 
 実際のマウス・キーボード操作での確認には、Windowsの検証用Pythonに `Pillow pywinauto psutil pywin32` を入れて実行します。マウスとキーボードを自動で動かすため、終わるまでPCを操作しないでください。
 
 ```powershell
-python -m scripts.smoke_windows_exe dist\Sumire-v1.1.0-win64 --artifacts test-artifacts\windows-exe --shell-verbs
+python -m scripts.smoke_windows_exe dist\Sumire-v1.2.0-win64 --artifacts test-artifacts\windows-exe --shell-verbs
 ```
 
 `--artifacts` には新しいフォルダーを指定します。`--shell-verbs` を付けると、右クリックの登録と、そこからの起動も確かめます（終わったら元に戻します）。

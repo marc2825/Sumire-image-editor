@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from .imaging import ImageProblem, MAX_INPUT_BYTES, clean_pixels, validate_opened
+from .imaging import FLAT_BACKGROUND, ImageProblem, MAX_INPUT_BYTES, clean_pixels, flatten, validate_opened
 from .stealth import remove_stealth, stealth_channels
 from .locking import image_locks
 
@@ -85,7 +85,7 @@ def _png_chunks(path: Path) -> tuple[str, ...]:
 
 
 def _jpeg_markers(path: Path) -> tuple[str, ...]:
-    markers = []
+    markers: list[str] = []
     with path.open("rb") as stream:
         if stream.read(2) != b"\xff\xd8":
             raise ImageProblem(tr("JPEGの検証に失敗しました。"))
@@ -243,7 +243,7 @@ def save_image(image: Image.Image, target: Path, *, source: Path, **options) -> 
 
 def _save_image(image: Image.Image, target: Path, *, source: Path, format: str = "PNG",
                owned_digest: bytes | None = None, cancel: threading.Event | None = None,
-               background: str = "#ffffff", overwrite_source: bool = False,
+               background: str = FLAT_BACKGROUND, overwrite_source: bool = False,
                source_digest: bytes | None = None, backup_metadata: bool = False, jpeg_quality: int = 95,
                keep_metadata: bool = False, backup=None) -> SaveResult:
     """Overwrite an input only by explicit opt-in and a matching loaded-file digest.
@@ -285,9 +285,7 @@ def _save_image(image: Image.Image, target: Path, *, source: Path, format: str =
             pixels = None
         options: dict = {}
         if payload is None and format == "JPEG":
-            flat = Image.new("RGB", pixels.size, background)
-            flat.paste(pixels, mask=pixels.getchannel("A"))
-            pixels = flat
+            pixels = flatten(pixels, background)
             options = {"quality": jpeg_quality, "subsampling": 0}
         elif payload is None and format == "WEBP":
             options = {"lossless": True, "exact": True}

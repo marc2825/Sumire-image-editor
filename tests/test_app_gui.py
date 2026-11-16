@@ -85,6 +85,7 @@ def test_external_open_waits_for_inflight_save(qtbot, window, tmp_path, monkeypa
         assert release.wait(10)
         return save(*args, **kwargs)
     monkeypatch.setattr(module, "save_image", delayed)
+    monkeypatch.setattr("sumire.batch_features.save_image", delayed)  # whole-list work saves from here
     source = window.document.path
     draw(window)
     qtbot.waitUntil(started.is_set, timeout=10000)

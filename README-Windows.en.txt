@@ -1,9 +1,9 @@
-Sumīre 1.1.1 / Windows 11 x64
+Sumīre 1.2.0 / Windows 11 x64
 
 Getting started
 Extract the whole ZIP and double-click sumire.exe. Python is not needed.
 sumire.exe uses the _internal folder next to it: keep the folder together and do not move the exe on its own.
-On the first start, choose “Overwrite the original” or “Save to a separate folder and keep the original”. If you close it without choosing, it is set to overwrite with auto-save. You can change it later with “Overwrite · auto-save ▾” at the top right.
+On the first start, choose “Overwrite the original” or “Save to a separate folder and keep the original”. If you close it without choosing, originals stay unchanged and images are saved to a separate folder. You can change it later with “Overwrite · auto-save ▾” at the top right.
 Images and folders can also be opened by dropping them on the window. Next time, Sumīre starts with the same tabs and images.
 To switch the language, use the box at the bottom right of the start page, or open the gear at the top right → “Display and import” → “Language” (applies from the next start).
 

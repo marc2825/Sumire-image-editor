@@ -57,7 +57,10 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | Save under another name | “Save as” in “⋯” or the image's right-click menu |
 | Change the format | Right-click → “Convert format” (for the whole list, the list's “⋯”) |
 | Make files smaller | Right-click → “Reduce file size”. Shows how much smaller they get before writing. Can also overwrite the originals (same format only) |
-| Combine images | Select 2 or more, right-click → “Make a collage”. Grid or free layout; each image can be cropped |
+| Combine images | Select images, right-click → “Make a collage” (from one image; “Add images…” adds more). Grid or free layout; each image can be cropped |
+| Tag and filter | Right-click → “Tags…” (several images at once). “Filter by tag” under the filter button, or the search |
+| Gather label folders | The list's “⋯ → Gather the label folders…” (collects the images of the Accept / Hold / Reject folders into one) |
+| Cut, copy and paste image files | Ctrl+X, Ctrl+C, Ctrl+V in the list, or right-click (works with Explorer too) |
 | Get removed metadata back | “⋯ → More → Save a copy with restored metadata” |
 | Copy and paste | Ctrl+C copies the result, Ctrl+V opens the clipboard image in a new tab |
 | Continue editing later | “File → Save edit project with the original” |

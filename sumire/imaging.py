@@ -53,6 +53,17 @@ class ImageProblem(ValueError):
     """User-facing error. Never includes source metadata or decoder messages."""
 
 
+# Formats without transparency (JPEG, BMP, …) show transparent parts on this colour.
+FLAT_BACKGROUND = "#ffffff"
+
+
+def flatten(pixels: Image.Image, background: str = FLAT_BACKGROUND) -> Image.Image:
+    """RGBA pixels on an opaque background, for a format without transparency."""
+    flat = Image.new("RGB", pixels.size, background)
+    flat.paste(pixels, mask=pixels.getchannel("A"))
+    return flat
+
+
 def clean_pixels(image: Image.Image) -> Image.Image:
     """Create a new object using pixels alone, including no inherited info/EXIF."""
     rgba = image if image.mode == "RGBA" else image.convert("RGBA")
@@ -170,24 +181,26 @@ def make_effect(image: Image.Image, tool: Tool) -> Image.Image:
             return image.copy()
         fill.putalpha(round(255 * opacity / 100))
         return Image.alpha_composite(image, fill)
+    # Averaged with premultiplied alpha: a transparent pixel adds nothing (no dark fringes or black
+    # blocks), its stored colour stays hidden, and the result keeps the image's transparency.
+    source = image.convert("RGBA").convert("RGBa")
     if tool.mode == "blur":
-        result = image.filter(ImageFilter.GaussianBlur(max(1, tool.strength)))
+        result = source.filter(ImageFilter.GaussianBlur(max(1, tool.strength)))
     elif tool.mode == "mosaic":
         block = max(2, tool.strength)
         width, height = image.size
         cols, rows = math.ceil(width / block), math.ceil(height / block)
         # Edge replication avoids dark pixels from padding and fixes the block grid.
-        padded = Image.new("RGBA", (cols * block, rows * block))
-        padded.paste(image, (0, 0))
+        padded = Image.new("RGBa", (cols * block, rows * block))
+        padded.paste(source, (0, 0))
         if padded.width > width:
-            padded.paste(image.crop((width - 1, 0, width, height)).resize((padded.width - width, height)), (width, 0))
+            padded.paste(source.crop((width - 1, 0, width, height)).resize((padded.width - width, height)), (width, 0))
         if padded.height > height:
             padded.paste(padded.crop((0, height - 1, padded.width, height)).resize((padded.width, padded.height - height)), (0, height))
         result = padded.resize((cols, rows), Image.Resampling.BOX).resize(padded.size, Image.Resampling.NEAREST).crop((0, 0, width, height))
     else:
         raise ValueError("Unknown tool")
-    result.putalpha(255)
-    return result
+    return result.convert("RGBA")
 
 
 def brush_segment(mask: Image.Image, start: tuple[float, float], end: tuple[float, float], diameter: int) -> None:
@@ -269,7 +282,7 @@ class Document:
         self.original = clean_pixels(image)
         self.initial_original = self.original
         self.geometry_edited = False
-        self.geometry_steps = []
+        self.geometry_steps: list = []
         self.image = clean_pixels(image)
         self.edit_mask = Image.new("L", image.size)
         self.history_limit = history_limit
@@ -284,14 +297,25 @@ class Document:
         self.restored_edited: bool | None = None
         self.edited = False
 
-    def update_edited(self) -> None:
-        # Called by image workers, never during a UI paint. Include RGB changes
-        # even when alpha itself is unchanged (RGBA getbbox defaults to alpha).
+    def update_edited(self, box=None) -> None:
+        """Whether the image differs from the original. ``box``, the only area just changed, saves
+        comparing the whole image: only an edited image that may have just returned to the original
+        needs the full comparison. Called by image workers, never during a UI paint."""
         if self.revision == 0 and self.restored_edited is not None:
             self.edited = self.restored_edited
+        elif self.original_edited or self.geometry_edited or self.original.size != self.image.size:
+            self.edited = True
+        elif box is not None and self._differs(box):
+            self.edited = True
+        elif box is not None and not self.edited:
+            self.edited = False  # the rest was the original already, and the changed area is too
         else:
-            self.edited = (self.original_edited or self.geometry_edited or self.original.size != self.image.size
-                           or ImageChops.difference(self.original, self.image).getbbox(alpha_only=False) is not None)
+            self.edited = self._differs(None)
+
+    def _differs(self, box) -> bool:
+        # Include RGB changes even when alpha itself is unchanged (RGBA getbbox defaults to alpha).
+        original, image = (self.original, self.image) if box is None else (self.original.crop(box), self.image.crop(box))
+        return ImageChops.difference(original, image).getbbox(alpha_only=False) is not None
 
     def restore_edit_state(self, edited: bool | None, *, overwrite: bool):
         self.restored_edited = edited
@@ -365,7 +389,7 @@ class Document:
         previous_revision = self.revision
         self.revision = self._sequence
         if old != new:
-            self.update_edited()
+            self.update_edited(box)
         self.undo_stack.append(Patch(box, zlib.compress(old, 1), zlib.compress(new, 1), previous_revision, self.revision,
                                      zlib.compress(old_mask, 1) if old_mask else b"", zlib.compress(new_mask, 1) if new_mask else b"",
                                      edited_before, self.edited))
@@ -430,7 +454,7 @@ class Stroke:
     def __init__(self, document: Document, tool: Tool, effect: Image.Image | None = None):
         self.document = document
         self.tool = tool
-        self.tiles = {}
+        self.tiles: dict = {}
         self.effect = document.original if tool.mode == "erase" else effect if effect is not None else make_effect(document.image, tool)
         self.mask = Image.new("L", document.image.size)
         self.last: tuple[float, float] | None = None

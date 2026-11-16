@@ -14,7 +14,7 @@ class FirstRunDialog(QDialog):
     """Ask before the first save instead of silently defaulting to overwriting originals.
 
     Nothing is preselected: the user picks overwrite or a separate folder explicitly.
-    Closing the dialog keeps the previous defaults (overwrite, metadata backup on).
+    Closing the dialog saves to a separate folder, so originals are never replaced without a choice.
     """
 
     def __init__(self, parent=None):
@@ -23,7 +23,7 @@ class FirstRunDialog(QDialog):
         self.setMinimumWidth(480)
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
-        intro = QLabel(tr("最初に保存の方法を選んでください（あとから右上の保存方法で変更できます）。\n選ばずに閉じた場合は、元画像に上書きして自動で保存します。"))
+        intro = QLabel(tr("最初に保存の方法を選んでください（あとから右上の保存方法で変更できます）。\n選ばずに閉じた場合は、元画像を変更せず、別フォルダーに保存します。"))
         intro.setWordWrap(True)
         layout.addWidget(intro)
         self.choices = QButtonGroup(self)

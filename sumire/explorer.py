@@ -122,6 +122,17 @@ def normalize_inputs(paths):
     return result
 
 
+def newest_python(candidates):
+    """The pythonw.exe of the newest Windows Python ("Python312" over "Python39"), 64-bit first."""
+    def version(path):
+        match = re.fullmatch(r"Python(\d)(\d+)(.*)", path.parent.name)
+        if not match:
+            return (0, 0, False, path.parent.name)
+        return (int(match.group(1)), int(match.group(2)), not match.group(3).endswith("-32"), path.parent.name)
+    candidates = list(candidates)
+    return max(candidates, key=version) if candidates else None
+
+
 def windows_launcher():
     if os.name == "nt":
         executable = Path(sys.executable).resolve()
@@ -135,10 +146,9 @@ def windows_launcher():
     if not distribution:
         raise ValueError(tr("この連携はWindowsまたはWSLから登録してください。"))
     # A Windows Python is only a console-free launcher; Qt stays inside WSL.
-    candidates = sorted(Path("/mnt/c/Users").glob("*/AppData/Local/Programs/Python/Python*/pythonw.exe"), reverse=True)
-    if not candidates:
+    pythonw = newest_python(Path("/mnt/c/Users").glob("*/AppData/Local/Programs/Python/Python*/pythonw.exe"))
+    if pythonw is None:
         raise ValueError(tr("Windowsのpythonw.exeが見つかりません。Windows版Pythonを導入するか、Windows版Sumīreから登録してください。"))
-    pythonw = candidates[0]
     project = Path(__file__).resolve().parent.parent
     launcher = [_wslpath(pythonw, "-w"), _wslpath(project / "scripts" / "launch_windows.pyw", "-w"),
                 distribution, sys.executable, str(project)]

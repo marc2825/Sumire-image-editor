@@ -46,3 +46,8 @@ clipboard-images/
 .sumire-rename-*.json
 .sumi-rename-*.json
 *.log
+
+# Test coverage (GitHub Actions, scripts/ci-requirements.txt)
+.coverage
+.coverage.*
+htmlcov/

@@ -6,31 +6,32 @@ from pathlib import Path
 from time import monotonic
 from PIL import Image
 
-from PySide6.QtCore import QEvent, QModelIndex, QSize, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QEvent, QSize, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
-    QAbstractScrollArea, QAbstractSpinBox, QApplication, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
-    QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
+    QAbstractScrollArea, QAbstractSpinBox, QApplication, QCheckBox, QColorDialog, QComboBox, QDialog, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMenu, QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
     QPlainTextEdit, QSplitter, QStackedWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 from .canvas import Canvas
-from .export import Cancelled, HiddenMetadata, available_target, check_cancel, detect_format, file_digest, kept_format, load_verified_export, save_image, verify_export
+from .export import HiddenMetadata, available_target, check_cancel, file_digest, load_verified_export, save_image
 from .imaging import SUPPORTED, Document, ImageProblem, Tool, format_names, load_image, make_effect
 from .library import filename_key, scan_paths
 from .labels import REVIEW_LABELS, ReviewLabels
 from .novelai import NovelAIImportDialog, ImageAdjustmentDialog, prepare_image
-from .organize import pending_renames, recover_rename, rename_images, renamed_path, sequence_stems
+from .organize import pending_renames, recover_rename
 from .session import Receipts, source_key
 from .theme import TOKENS, dark_palette, stylesheet
 from .icons import icon, swatch
-from .ui import COPYRIGHT, ElidedLabel, fact_table, html_text, install_dialog_tint, slider_with_box, FilenameField, PositionField, Popover, ValueLabel, WelcomePage, ZoomField, attach_key_hint, describe_inputs, divider, repolish, section_label, tool_button
+from .ui import COPYRIGHT, ElidedLabel, install_dialog_tint, slider_with_box, FilenameField, PositionField, Popover, ValueLabel, WelcomePage, ZoomField, attach_key_hint, describe_inputs, divider, repolish, section_label, tool_button
 from .workers import Job
 from .workbench import Workbench
 from .explorer import configure_context_menu
 from .app_features import DEFAULT_PRESETS, AppFeatures
+from .batch_features import BatchFeatures
+from .rename_features import RenameFeatures
 from .masks import MaskStore
 from .shortcuts import ShortcutDialog, hint, load_bindings, matches
 from .editor_features import EditorFeatures
@@ -54,10 +55,12 @@ FILL_NOTE = tr("不透明度100%で、元の画素を完全に置き換えます
 STRIP_METADATA_DEFAULT = False
 # 「ラベルを付けたら次へ」 starts on.
 AUTO_ADVANCE_DEFAULT = True
+# A new profile never replaces originals until the user chooses to (first-run dialog or save method).
+OVERWRITE_DEFAULT = False
 # A first start (and 「設定を初期状態に戻す」) brushes with the 「細かいモザイク」 preset.
 START_TOOL = DEFAULT_PRESETS["細かいモザイク"]
 
-class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbench, QMainWindow):
+class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, RenameFeatures, BatchFeatures, Workbench, QMainWindow):
     closed = Signal(object)
     closeCancelled = Signal()
     stateChanged = Signal()
@@ -184,11 +187,12 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.batch_button = action(tr("全画像のメタデータを一括削除"), self.start_batch,
                                    tooltip=tr("保存済みを含む一覧の全画像からメタデータを削除します。加工は保ちます。"))
         self.novelai_adjust = action(tr("NovelAIへ渡す前に切り抜き・縮小"), checkable=True)
+        self.novelai_metadata = action(tr("NovelAIに渡す画像に生成情報（メタデータ）を付ける"), checkable=True)
         self.explorer_install = action(tr("右クリックに「Sumīreで開く」を追加"), lambda: self.setup_explorer(False))
         self.explorer_remove = action(tr("右クリックの登録を解除"), lambda: self.setup_explorer(True))
         self.label_actions = {}
         for number, (label, text) in enumerate(REVIEW_LABELS.items(), 1):
-            self.label_actions[label] = action(text, lambda value=label: self.toggle_label(value), str(number))
+            self.label_actions[label] = action(text, lambda value=label: self.press_label(value), str(number))
         self.label_actions[None] = action(tr("ラベルを解除"), lambda: self.set_review_label(None), "Alt+0")
         self.create_app_actions()
         self.create_editor_actions()
@@ -613,8 +617,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         label_row.setSpacing(6)
         self.label_buttons = {}
         for number, (label, text) in enumerate(REVIEW_LABELS.items(), 1):
-            button = self._button(text, lambda checked=False, value=label: self.toggle_label(value),
-                                  tr("{number} · もう一度押すと解除。複数選択した画像にはまとめて付けます。").format(number=number))
+            button = self._button(text, lambda checked=False, value=label: self.press_label(value),
+                                  tr("{number} · 複数選択した画像にはまとめて付けます。外すときは「ラベルを解除」（Alt+0）。").format(number=number))
             button.setObjectName("reviewLabel")
             button.setProperty("label", label)
             button.setCheckable(True)
@@ -679,7 +683,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.auto_note = self._label("", "faint")
         layout.addWidget(self.auto_note)
         self.overwrite = QCheckBox(tr("元画像に上書き保存"))
-        self.overwrite.setChecked(True)
+        self.overwrite.setChecked(OVERWRITE_DEFAULT)
         self.overwrite.setToolTip(tr("オフにすると、別フォルダーに保存して元画像を残します。次の保存から適用します。"))
         self.overwrite.toggled.connect(self.overwrite_changed)
         layout.addWidget(self.overwrite)
@@ -789,11 +793,12 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
             "brush_larger": lambda: self.brush.setValue(self.brush.value() + 10),
             "help": self.show_help, "strength_down": lambda: self.adjust_strength(-1),
             "strength_up": lambda: self.adjust_strength(1), "search": self.focus_search,
-            "rejected": lambda: self.toggle_label("rejected"),
-            "pending": lambda: self.toggle_label("pending"),
-            "accepted": lambda: self.toggle_label("accepted"),
+            "rejected": lambda: self.press_label("rejected"),
+            "pending": lambda: self.press_label("pending"),
+            "accepted": lambda: self.press_label("accepted"),
             "clear_label": lambda: self.set_review_label(None), "undo_organize": self.undo_organization,
-            "copy_image": self.copy_image, "paste_image": self.paste_image, "fullscreen": self.toggle_fullscreen,
+            "copy_image": self.copy_image, "cut_files": lambda: self.clip_files(cut=True), "paste_image": self.paste_image,
+            "fullscreen": self.toggle_fullscreen,
         }
         self.shortcuts = []
         for name, handler in handlers.items():
@@ -813,7 +818,9 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         for action, name in ((self.open_folder_action, "open_folder"), (self.reload_action, "reload"),
                              (self.manual_save, "save"), (self.rename_button, "rename"),
                              (self.app_actions["help"], "help"),
-                             (self.workflow_actions["undo_organize"], "undo_organize")):
+                             (self.workflow_actions["undo_organize"], "undo_organize"),
+                             (self.workflow_actions["cut_files"], "cut_files"), (self.workflow_actions["copy_files"], "copy_image"),
+                             (self.workflow_actions["paste_files"], "paste_image")):
             self.action_hint(action, name)
         for label, action in self.label_actions.items():
             self.action_hint(action, label or "clear_label")
@@ -829,7 +836,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                 (self.help_button, "help", tr("ヘルプ")),
                 (self.reload_folder_button, "reload", tr("フォルダーを再読み込み（ほかのアプリで加えた画像も読み込みます）")),
                 (self.save_next_button, "save_next", tr("保存して次の画像へ（未編集でも保存。メタデータは保存方法の設定どおり）")),
-                (self.search, "search", tr("ファイル名かメモの一部で絞り込みます")),
+                (self.search, "search", tr("ファイル名・メモ・タグの一部で絞り込みます")),
                 (self.previous, "previous", tr("前の画像")), (self.next, "next", tr("次の画像")),
                 (self.erase_button, "eraser", tr("なぞった部分を元画像に戻します。もう一度押すと元のツールへ")),
                 (self.mask_toggle, "mask", tr("加工範囲のマスクを表示")),
@@ -846,7 +853,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
             label.set_key(self.shortcut_hint(name))
         for label, button in self.label_buttons.items():
             key = self.shortcut_hint(label)
-            button.setToolTip((key + " · " if key else "") + tr("もう一度押すと解除。複数選択した画像にはまとめて付けます。"))
+            button.setToolTip((key + " · " if key else "") + tr("複数選択した画像にはまとめて付けます。外すときは「ラベルを解除」。"))
 
     def action_hint(self, action, name):
         text, key = action.text().split("\t")[0], self.shortcut_hint(name)
@@ -939,6 +946,13 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.status.setStyleSheet("")
         self.status.setText(message)
         self.status.setToolTip(str(message))
+
+    def report(self, message):
+        """The result of an operation that also moved on to another image: shown now, and again once
+        that image has loaded (its own hint would otherwise replace the result at once)."""
+        self.info(message)
+        if self.loading:
+            self.after_load_message = message
 
     def busy(self):
         return self.loading or self.finalizing or self.batch_job is not None or self.novelai_job is not None or self.canvas.stroke is not None
@@ -1331,7 +1345,6 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
             box.setRange(slider.minimum(), slider.maximum())
             box.setValue(slider.value())
             box.blockSignals(False)
-        value = self.strength.value()
         if self.mode == "erase":
             self.strength_description.setText(tr("なぞった部分を元画像に戻します。読み込む前に保存した加工は戻せません。"))
         elif self.mode == "fill":
@@ -1513,7 +1526,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         dialog.setText(tr("この画像の加工とマスクを初期化しますか？"))
         saving = (tr("初期化後、現在の設定で自動保存します。\n保存方法：") + self.save_mode_text()
                   if self.auto.isChecked() else tr("初期化後は未保存の状態になります（「保存」で保存）。"))
-        dialog.setInformativeText(tr("すべての加工とマスクを消して、元画像に戻します。（※ 「元に戻す」で取り消せます）\n"))
+        dialog.setInformativeText(tr("すべての加工とマスクを消して、元画像に戻します。（※ 「元に戻す」で取り消せます）\n") + saving)
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         dialog.button(QMessageBox.StandardButton.Ok).setText(tr("初期化"))
         dialog.button(QMessageBox.StandardButton.Cancel).setText(tr("キャンセル"))
@@ -1796,6 +1809,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         states = {mapping.get(path, path): state for path, state in self.model.states.items()}
         labels = {mapping.get(path, path): label for path, label in self.model.labels.items()}
         notes = {mapping.get(path, path): note for path, note in self.model.notes.items()}
+        tags = {mapping.get(path, path): value for path, value in self.model.tags.items()}
         selected_paths = [mapping.get(path, path) for path in self.selected_paths()]
         selection = self.list.selectionModel()
         selection.blockSignals(True)
@@ -1803,6 +1817,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
         self.model.states.update({path: value for path, value in states.items() if path in self.model.rows})
         self.model.labels.update({path: value for path, value in labels.items() if path in self.model.rows})
         self.model.notes.update({path: value for path, value in notes.items() if path in self.model.rows})
+        self.model.tags.update({path: value for path, value in tags.items() if path in self.model.rows})
         self.proxy.refresh()
         if self.document:
             self.index = self.model.rows[self.document.path]
@@ -1832,144 +1847,6 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
             return
         self.update_controls()
         self.image_menu.popup(self.canvas.mapToGlobal(position))
-
-    def rename_current(self):
-        if not self.document or self.busy() or self.saving:
-            return
-        self.file_label.begin_edit()
-
-    def remember_rename_source(self):
-        self.inline_rename_source = self.document.path if self.document else None
-
-    def rename_inline(self, stem):
-        source = getattr(self, "inline_rename_source", None)
-        if source is not None:
-            self.rename_source(source, stem)
-
-    def rename_source(self, source, stem):
-        if source not in self.model.rows or self.busy() or self.saving:
-            return
-        try:
-            target = renamed_path(source, stem)
-        except ImageProblem as error:
-            self.error(str(error))
-            return
-        self.rename_paths({source: target})
-
-    def number_images(self, paths=None):
-        if not self.model.paths or self.busy() or self.saving:
-            return
-        paths = paths if isinstance(paths, list) else self.model.paths
-        if not paths:
-            return
-        stems = sequence_stems(len(paths))
-        mapping = {path: renamed_path(path, stem) for path, stem in zip(paths, stems)}
-        dialog = QDialog(self)
-        dialog.setWindowTitle(tr("順に連番へ改名"))
-        dialog.resize(620, 440)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(self._label(tr("{count}枚を、一覧の順番で {stems} 〜 {stems2} の連番に変更します。（画像自体は変わりません）").format(count=len(mapping), stems=stems[0], stems2=stems[-1])))
-        preview = QPlainTextEdit()
-        preview.setReadOnly(True)
-        preview.setPlainText("\n".join(f"{old}  →  {new.name}" for old, new in mapping.items()))
-        layout.addWidget(preview)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(tr("名前を変更"))
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.rename_paths(mapping)
-
-    def rename_paths(self, mapping, undoing=False):
-        if self.busy() or self.saving or not mapping or all(str(old) == str(new) for old, new in mapping.items()):
-            return
-        if self.workspace_host is not None and not self.workspace_host.can_rename(self, mapping):
-            self.error(tr("同じ画像を別のタブで処理中です。完了してから名前を変更してください。"))
-            return
-        self.guard(lambda: self._rename_paths(mapping, undoing=undoing))
-
-    def _rename_paths(self, mapping, undoing=False):
-        paths = [mapping.get(path, path) for path in self.model.paths]
-        selected = self.document.path if self.document else self.model.paths[max(0, self.index)]
-        self.begin_batch_progress(len(mapping))
-        self.canvas.ready = False
-        self.info(tr("画像の名前を変更中…"))
-        record_folders = self.workspace_host.rename_record_folders(mapping) if self.workspace_host is not None else set()
-
-        def process(cancel, report):
-            indexes = {folder: Receipts(folder) for folder in {path.parent for path in mapping}}
-            label_indexes = {folder: ReviewLabels(folder) for folder in {path.parent for path in mapping}}
-            if self.receipts:
-                indexes[self.receipts.folder] = self.receipts
-            for folder in record_folders:
-                if folder not in indexes:
-                    indexes[folder] = Receipts(folder)
-            expected = self.operation_history[-1][1][1] if undoing else None
-            rename_images(mapping, cancel=cancel, progress=report, expected_digests=expected, record_folders=set(indexes))
-            indexes = {folder: Receipts(folder) for folder in indexes}
-            label_indexes = {folder: ReviewLabels(folder) for folder in label_indexes}
-            warnings = 0
-            label_warnings = 0
-            digests = {new: file_digest(new) for new in mapping.values()}
-            return indexes, warnings, label_indexes, label_warnings, digests
-
-        def done(result):
-            self.batch_job = None
-            indexes, warnings, label_indexes, label_warnings, digests = result
-            self.source_indexes.update(indexes)
-            if self.receipts and self.receipts.folder in indexes:
-                self.receipts = indexes[self.receipts.folder]
-            self.label_indexes.update(label_indexes)
-            documents = OrderedDict()
-            for old, document in self.documents.items():
-                document.path = mapping.get(old, old)
-                document.output = mapping.get(document.output, document.output)
-                documents[document.path] = document
-            self.documents = documents
-            self.clean_states = {mapping.get(path, path): state for path, state in self.clean_states.items()}
-            self.owned = {mapping.get(path, path): digest for path, digest in self.owned.items()}
-            self.batch_failures = {mapping.get(path, path): message for path, message in self.batch_failures.items()}
-            self.workspace_inputs = [str(mapping.get(Path(raw).resolve(), Path(raw))) for raw in self.workspace_inputs]
-            if undoing:
-                self.operation_history.pop()
-            else:
-                self.operation_history.append(("rename", ({new: old for old, new in mapping.items()}, digests)))
-            self.replace_list(paths, mapping)
-            self.sort_combo.blockSignals(True)
-            self.sort_combo.setCurrentIndex(self.sort_combo.findData("manual"))
-            self.sort_combo.blockSignals(False)
-            if self.document:
-                self.name.setText(self.document.output.stem if self.document.output else self.document.path.stem)
-                self.setWindowTitle(f"{self.document.path.name} — Sumīre")
-                self.prepare_effect()
-            else:
-                self._load_index(self.model.rows[mapping.get(selected, selected)])
-            self.info(tr("名前を変更しました · {count}枚").format(count=len(mapping)) + (tr(" / 保存記録の更新失敗 {warnings}").format(warnings=warnings) if warnings else "")
-                      + (tr(" / ラベル記録の更新失敗 {label_warnings}（再設定してください）").format(label_warnings=label_warnings) if label_warnings else ""))
-            self.update_controls()
-            self.pathsRenamed.emit(mapping)
-
-        def failed(message):
-            self.batch_job = None
-            self.error(message)
-            if self.document:
-                self.prepare_effect()
-            else:
-                self._load_index(self.model.rows[selected])
-
-        self.batch_job = self.run_job(process, done, failed, progress=self.update_batch_progress)
-        self.batch_job.signals.cancelled.connect(lambda: failed(tr("名前の変更を中止し、元の名前に戻しました。")))
-        self.update_controls()
-
-    def begin_batch_progress(self, total):
-        self.batch_progress.setRange(0, total)
-        self.batch_progress.setValue(0)
-        self.batch_progress.show()
-
-    def update_batch_progress(self, completed, total):
-        self.batch_progress.setRange(0, total)
-        self.batch_progress.setValue(completed)
 
     def _scan(self, inputs):
         folders = {Path(raw).resolve() if Path(raw).is_dir() else Path(raw).resolve().parent for raw in inputs}
@@ -2054,6 +1931,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
             self.model.states.update(states)
             self.model.labels.update(labels)
             self.model.notes.update({path: self.label_indexes[path.parent].note(path) for path in paths if self.label_indexes[path.parent].note(path)})
+            self.model.tags.update({path: self.label_indexes[path.parent].tags_of(path) for path in paths if self.label_indexes[path.parent].tags_of(path)})
+            self.refresh_tag_filter()
             self.workspace_inputs = list(inputs)
             self.watched_folders = watched_folders
             self.sync_watch_scope()
@@ -2330,16 +2209,16 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
             self.source_indexes[path.parent] = Receipts(path.parent)
         return self.source_indexes[path.parent]
 
-    def toggle_label(self, label):
+    def press_label(self, label):
+        """A label button or key always applies its label (pressing it again keeps it); Alt+0 removes labels."""
         if self.document:
-            paths = self.selected_paths() or [self.document.path]
-            self.set_review_label(None if all(self.model.labels.get(path) == label for path in paths) else label)
+            self.set_review_label(label)
 
     def set_review_label(self, label):
         self.apply_review_label(label)
 
     def open_novelai(self, target="novelai"):
-        """Prepare a metadata-free PNG of the edited image and hand it over.
+        """Prepare a PNG of the edited image (metadata-free unless the NovelAI option asks) and hand it over.
 
         ``target`` "novelai" opens NovelAI and copies the image; "drag" only shows
         the image to drag into a browser, a social site or a chat app.
@@ -2383,8 +2262,11 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
             resume()
             self.error(message)
 
-        self.novelai_job = self.run_job(lambda cancel: prepare_image(pixels, source, cancel, crop=crop, max_size=max_size)
-                                      if crop or max_size else prepare_image(pixels, source, cancel), done, failed)
+        # Only NovelAI may receive the generation information, and only when asked; other apps never do.
+        options = {"crop": crop, "max_size": max_size} if crop or max_size else {}
+        if target == "novelai" and self.novelai_metadata.isChecked():
+            options["keep_metadata"] = True
+        self.novelai_job = self.run_job(lambda cancel: prepare_image(pixels, source, cancel, **options), done, failed)
         self.novelai_job.signals.cancelled.connect(lambda: failed(tr("画像の準備を中止しました。")))
         self.update_controls()
 
@@ -2565,45 +2447,6 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
             action()
         self.update_controls()
 
-    def start_batch(self):
-        if self.busy() or self.saving or not self.model.paths:
-            return
-        if any(self.is_clipboard_path(path) for path in self.model.paths):
-            self.info(tr("クリップボードの画像は一括処理できません。1枚ずつ保存するか、「縮小・形式を指定して書き出す」で保存先を選んでください。"))
-            return
-        paths = list(self.model.paths)
-        if not self.confirm_batch_deletion(paths):
-            return
-        if any(path not in self.model.rows for path in paths):
-            self.info(tr("確認中に一覧が変更されました。もう一度実行してください。"))
-            return
-        self.guard(lambda: self._start_batch(paths=paths))
-
-    def confirm_batch_deletion(self, paths):
-        overwrite = self.overwrite.isChecked()
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle(tr("メタデータの一括削除を確認"))
-        dialog.setIcon(QMessageBox.Icon.Warning if overwrite else QMessageBox.Icon.Question)
-        dialog.setTextFormat(Qt.TextFormat.RichText)
-        dialog.setText(html_text(tr("このタブの画像 {count} 枚のメタデータを削除しますか？").format(count=len(paths))))
-        rows = [(tr("対象"), tr("「{workspace_title}」の一覧全体（選択・絞り込みに関係なく）").format(workspace_title=self.workspace_title()))]
-        if overwrite:
-            rows += [(tr("保存方法"), tr("元画像に上書き（同じ場所・名前・形式）")),
-                     (tr("元画像"), tr("アプリの終了まで残す（「上書き前に戻す」で戻せる）") if self.keep_originals.isChecked()
-                      else tr("残さない（削除したメタデータは「元に戻す」で戻らない）"))]
-        else:
-            rows += [(tr("保存方法"), tr("別フォルダーへ保存（元画像は変えない）")), (tr("保存先"), str(self.output_folder)),
-                     (tr("形式"), self.format_combo.currentText())]
-        rows.append((tr("削除前の情報"), tr("復元用に残す（管理記録に圧縮して保存）") if self.metadata_backup.isChecked() else tr("残さない")))
-        dialog.setInformativeText(fact_table(rows, [tr("モザイクなどの加工はそのまま保ちます。")]))
-        dialog.setDetailedText("\n".join(str(path) for path in paths))
-        dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        dialog.button(QMessageBox.StandardButton.Ok).setText(tr("削除して保存"))
-        dialog.button(QMessageBox.StandardButton.Cancel).setText(tr("キャンセル"))
-        dialog.setDefaultButton(QMessageBox.StandardButton.Cancel)
-        dialog.setEscapeButton(QMessageBox.StandardButton.Cancel)
-        return self.confirm_dialog(dialog)
-
     def confirm_dialog(self, dialog, *, accepted=QMessageBox.StandardButton.Ok):
         # Do not let an already scheduled autosave run inside the confirmation's event loop.
         autosave_pending = self.autosave_timer.isActive()
@@ -2624,173 +2467,6 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Workbe
                 shortcut.setEnabled(was_enabled)
             if autosave_pending and self.auto.isChecked() and self.document and self.document.dirty:
                 self.autosave_timer.start()
-
-    def _start_batch(self, paths=None, export_folder=None, names=None, format=None):
-        """Save or export ``paths``; ``names`` maps a path to a new file stem and
-        ``format="SOURCE"`` keeps each PNG / JPEG / WebP format (others become PNG).
-
-        ``export_folder`` is one folder, or {path: folder} to export into several."""
-        paths = list(self.model.paths if paths is None else paths)
-        if export_folder is None and any(self.is_clipboard_path(path) and
-                (path not in self.documents or self.documents[path].output is None) for path in paths):
-            self.info(tr("クリップボードの画像は個別に保存するか、保存先を選んで書き出してください。"))
-            return
-        backup_metadata = self.metadata_backup.isChecked()
-        project_paths = {path for path, doc in self.documents.items() if getattr(doc, "project", False)}
-        previous_failures = dict(self.batch_failures) if export_folder == getattr(self, "failed_export_folder", None) else {}
-        self.begin_batch_progress(len(paths))
-        export_folders = export_folder if isinstance(export_folder, dict) else None
-        folder = self.output_folder if export_folder is None or export_folders is not None else export_folder
-        receipts = Receipts(folder) if export_folder is not None and export_folders is None else self.receipts
-        export_receipts = {target: Receipts(target) for target in set(export_folders.values())} if export_folders else {}
-        chosen_format = format or self.format_combo.currentData()
-        jpeg_quality = self.jpeg_quality
-        overwrite = self.overwrite.isChecked() and export_folder is None
-        keep_original = originals().keep if overwrite and self.keep_originals.isChecked() else None
-        # Keep cached edits and reload verified outputs for other saved images.
-        snapshots = {path: doc.image.copy() for path, doc in self.documents.items()}
-        mask_snapshots = {path: doc.edit_mask.copy() for path, doc in self.documents.items()}
-        source_digests = {path: doc.source_digest for path, doc in self.documents.items()}
-        source_formats = {path: doc.source_format for path, doc in self.documents.items()}
-        snapshot_states = {path: doc.edit_state for path, doc in self.documents.items()}
-        geometry_snapshots = {path: list(doc.geometry_steps) for path, doc in self.documents.items()}
-        geometry_digests = {path: doc.geometry_source_digest for path, doc in self.documents.items()}
-        self.canvas.ready = False
-        self.info(tr("保存済みを含む全画像を1枚ずつ処理中…"))
-        indexes = {}
-
-        def process(cancel, report):
-            saved, failed = [], {}
-            cancelled = False
-            receipt_failures = 0
-            saved_states = {}
-            for path in paths:
-                try:
-                    check_cancel(cancel)
-                    format = chosen_format if chosen_format != "SOURCE" else kept_format(source_formats.get(path) or detect_format(path))
-                    if overwrite and path.parent not in indexes:
-                        indexes[path.parent] = Receipts(path.parent)
-                    index = indexes[path.parent] if overwrite else export_receipts[export_folders[path]] if export_folders else receipts
-                    record = index.get(path, overwrite=overwrite)
-                    edited = snapshot_states.get(path, False)
-                    if path not in snapshot_states and record:
-                        output = index.folder / record["name"]
-                        if output.is_file() and file_digest(output).hex() == record["digest"]:
-                            edited = record["edited"]
-                    image = snapshots.get(path)
-                    image_digest = None
-                    if export_folder and image is None:
-                        image = self.review_pixels(path)
-                    source_digest = source_digests.get(path)
-                    source_format = source_formats.get(path)
-                    target = path if overwrite else None
-                    owned_digest = None
-                    if not overwrite:
-                        record = index.get(path, overwrite=False)
-                        if record:
-                            output = index.folder / record["name"]
-                            digest = bytes.fromhex(record["digest"])
-                            if output.is_file() and file_digest(output) == digest:
-                                if image is None:
-                                    image = load_image(output)
-                                    if file_digest(output) != digest:
-                                        raise ImageProblem(tr("読み込み中に保存済み画像が変更されました。"))
-                                    image_digest = digest
-                                if record["format"] == format:
-                                    target = output
-                                    owned_digest = digest
-                    if image is None:
-                        source_digest = file_digest(path)
-                        image = load_image(path)
-                        source_format = image.format
-                        if file_digest(path) != source_digest:
-                            raise ImageProblem(tr("読み込み中に元画像が変更されました。"))
-                    mask = mask_snapshots.get(path)
-                    if mask is None:
-                        prior_digest = image_digest or owned_digest or source_digest or file_digest(path)
-                        mask = MaskStore(path.parent).get(path, prior_digest, image.size)
-                    if target is None:
-                        target = available_target(export_folders[path] if export_folders else folder,
-                                                  names.get(path, path.stem) if names else path.stem, format)
-                    previous_key = source_key(path) if overwrite else None
-                    result = save_image(image, target, source=path, format=source_format if overwrite else format, cancel=cancel,
-                                        owned_digest=owned_digest, overwrite_source=overwrite, source_digest=source_digest,
-                                        backup_metadata=backup_metadata and path not in project_paths, jpeg_quality=jpeg_quality,
-                                        backup=keep_original)
-                    saved.append((path, result))
-                    try:
-                        index.record(path, result, previous_key=previous_key, edited=edited)
-                    except OSError:
-                        receipt_failures += 1
-                    if mask is not None and export_folder is None:
-                        try:
-                            MaskStore(path.parent).store(path, result.digest, mask)
-                            if not overwrite:
-                                steps = geometry_snapshots.get(path)
-                                if steps is None and image_digest:
-                                    steps = MaskStore(path.parent).get_geometry(path, image_digest, source_digest or file_digest(path))
-                                if steps is not None:
-                                    MaskStore(path.parent).store_geometry(path, result.digest, steps, geometry_digests.get(path) or source_digest or file_digest(path))
-                        except OSError:
-                            receipt_failures += 1
-                    saved_states[path] = edited
-                except Cancelled:
-                    cancelled = True
-                    break
-                except ImageProblem as error:
-                    failed[path] = str(error)
-                except OSError:
-                    failed[path] = tr("画像の読み込み・保存に失敗しました。空き容量・アクセス権・元画像の存在を確認してください。")
-                finally:
-                    report(len(saved) + len(failed), len(paths))
-            return saved, failed, cancelled, receipt_failures, saved_states
-
-        def done(result):
-            self.batch_job = None
-            saved, failed, cancelled, receipt_failures, saved_states = result
-            attempted = {path for path, _ in saved} | set(failed)
-            self.batch_failures = {path: reason for path, reason in previous_failures.items() if cancelled and path not in attempted}
-            self.batch_failures.update(failed)
-            self.failed_export_folder = export_folder
-            if overwrite:
-                self.source_indexes.update(indexes)
-            for path, output in saved:
-                self.owned[output.path] = output.digest
-                document = self.documents.get(path)
-                self.model.state(path, "書出済み · メタデータ：無し" if export_folder else "未編集 · 保存済み · メタデータ：無し" if saved_states[path] is False else "保存済み · メタデータ：無し")
-                if document and export_folder is None:
-                    document.output = output.path
-                    document.saved_revision = document.revision
-                    if overwrite:
-                        document.source_digest = output.digest
-                if overwrite:
-                    self.model.cache.pop(path, None)
-            for path in failed:
-                self.model.state(path, "保存失敗")
-            self.info(tr("{value} · 保存 {count} / 失敗 {count2}").format(value=tr('一括処理を中止') if cancelled else tr('一括処理完了'), count=len(saved), count2=len(failed)))
-            if failed:
-                self.show_text_window(tr("保存できなかった画像"), "\n\n".join(f"{path}\n{reason}" for path, reason in failed.items()))
-            if receipt_failures:
-                self.info(self.status.text() + tr(" / 再開用の記録失敗 {receipt_failures}").format(receipt_failures=receipt_failures))
-            self.update_controls()
-            if self.document:
-                self.prepare_effect()
-                if self.auto.isChecked() and self.document.dirty:
-                    self.autosave_timer.start()
-            else:
-                self._load_index(self.index)
-
-        def failed(message):
-            self.batch_job = None
-            self.error(message + tr(" 完了した分は保存済みです。"))
-            if self.document:
-                self.prepare_effect()
-            else:
-                self._load_index(self.index)
-
-        self.batch_job = self.run_job(process, done, failed, progress=self.update_batch_progress)
-        self.batch_job.signals.cancelled.connect(lambda: failed(tr("一括処理を中止しました。")))
-        self.update_controls()
 
     def cancel_work(self):
         if self.novelai_job:

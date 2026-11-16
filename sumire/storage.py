@@ -15,6 +15,7 @@ TABLES = {
     "receipts": ("source", "name", "format", "digest", "edited"),
     "review_labels": ("source", "label"),
     "review_notes": ("source", "note"),
+    "review_tags": ("source", "tags"),
     "edit_masks": ("source", "digest", "width", "height", "png"),
     "geometry_edits": ("source", "digest", "recipe"),
     "metadata_backups": ("source", "digest", "previous_digest", "payload"),
@@ -23,6 +24,7 @@ SCHEMAS = {
     "receipts": "source TEXT PRIMARY KEY, name TEXT, format TEXT, digest TEXT, edited INTEGER",
     "review_labels": "source TEXT PRIMARY KEY, label TEXT NOT NULL",
     "review_notes": "source TEXT PRIMARY KEY, note TEXT NOT NULL",
+    "review_tags": "source TEXT PRIMARY KEY, tags TEXT NOT NULL",
     "edit_masks": "source TEXT PRIMARY KEY, digest TEXT, width INTEGER, height INTEGER, png BLOB",
     "geometry_edits": "source TEXT PRIMARY KEY, digest TEXT, recipe TEXT",
     "metadata_backups": "source TEXT PRIMARY KEY, digest TEXT, previous_digest TEXT, payload BLOB NOT NULL",
@@ -128,6 +130,24 @@ def migrate_records(folders, mode, preferences):
             # Retaining an old copy is preferable to reporting migration failure.
             pass
     return len(staged)
+
+
+def remove_empty_records(folder) -> bool:
+    """Remove the records file of ``folder`` when it holds no record at all; True when none is left."""
+    path = record_path(folder)
+    if not path.exists():
+        return True
+    try:
+        with closing(connect_owned(path)) as connection:
+            tables = [row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+            if any(connection.execute(f'SELECT 1 FROM "{table}" LIMIT 1').fetchone() for table in tables
+                   if not table.startswith("sqlite_")):
+                return False
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            Path(str(path) + suffix).unlink(missing_ok=True)
+        return True
+    except (OSError, sqlite3.Error):
+        return False
 
 
 def delete_records(folders):

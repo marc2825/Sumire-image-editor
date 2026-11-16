@@ -23,6 +23,7 @@ NOVELAI_URL = "https://novelai.net/image"
 class PreparedImage:
     directory: TemporaryDirectory
     path: Path
+    metadata: bool = False  # the original's generation information (metadata) was attached
 
     def cleanup(self):
         self.directory.cleanup()
@@ -43,15 +44,46 @@ def transform_image(pixels, crop=None, max_size=None):
     return pixels
 
 
-def prepare_image(pixels, source: Path, cancel=None, *, crop=None, max_size=None) -> PreparedImage:
+def with_metadata(pixels, source: Path, cancel=None):
+    """PNG bytes of ``pixels`` carrying the generation information of ``source`` (a PNG), or None.
+
+    NovelAI reads it back (text chunks and Stealth PNGInfo). Pictures inside the metadata
+    (thumbnails) are never copied. When the hidden pixel data no longer fits (a smaller,
+    cropped image), the text is kept without it.
+    """
+    from .metadata import _compress, capture_metadata, restored_bytes, unpack_backup
+    try:
+        payload = capture_metadata(source.read_bytes(), cancel)
+    except (OSError, ImageProblem):
+        return None
+    if payload is None:
+        return None
+    format, parts, stealth = unpack_backup(payload)
+    if format != "PNG":
+        return None
+    try:
+        return restored_bytes(pixels, payload, cancel)
+    except ImageProblem:
+        if not stealth or not parts:
+            return None
+        return restored_bytes(pixels, _compress("PNG", parts, []), cancel)
+
+
+def prepare_image(pixels, source: Path, cancel=None, *, crop=None, max_size=None, keep_metadata=False) -> PreparedImage:
+    """A PNG of the edited image to hand over: without metadata, or (``keep_metadata``, for NovelAI)
+    with the original's generation information so NovelAI can read the settings back."""
     directory = TemporaryDirectory(prefix="sumire-novelai-", ignore_cleanup_errors=True)
     try:
         target = Path(directory.name) / "sumire-i2i.png"
         # Remove carriers before cropping/resampling can destroy their header.
         pixels = transform_image(remove_stealth(pixels), crop, max_size)
-        save_image(pixels, target, source=source, format="PNG", cancel=cancel)
+        data = with_metadata(pixels, source, cancel) if keep_metadata and source.is_file() else None
+        if data is not None:
+            target.write_bytes(data)
+        else:
+            save_image(pixels, target, source=source, format="PNG", cancel=cancel)
         check_cancel(cancel)
-        return PreparedImage(directory, target)
+        return PreparedImage(directory, target, metadata=data is not None)
     except BaseException:
         directory.cleanup()
         raise
@@ -284,8 +316,9 @@ class NovelAIImportDialog(QDialog):
         layout.addWidget(instructions)
         self.preview = ImageDragLabel(prepared.path)
         layout.addWidget(self.preview)
-        note = QLabel(tr("表示中の編集結果を、メタデータのないPNGで渡します。\n"
-                      "※ 渡し終わるまで、この画面は閉じないでください。"))
+        note = QLabel((tr("表示中の編集結果に、元の画像の生成情報（メタデータ）を付けたPNGで渡します。\n")
+                       if prepared.metadata else tr("表示中の編集結果を、メタデータのないPNGで渡します。\n"))
+                      + tr("※ 渡し終わるまで、この画面は閉じないでください。"))
         note.setWordWrap(True)
         layout.addWidget(note)
         self.path_field = QLineEdit(str(prepared.path))
@@ -321,6 +354,8 @@ class NovelAIImportDialog(QDialog):
             return
         mime = QMimeData()
         mime.setData("image/png", data)
+        # "image/png" carries these exact bytes (with the metadata, when it was attached). No file link:
+        # the file is removed when this window closes.
         mime.setImageData(QImage.fromData(data, "PNG"))
         QApplication.clipboard().setMimeData(mime)
         self.message.setText(tr("画像をコピーしました。NovelAIへCtrl+Vで貼り付けることも可能です。"))

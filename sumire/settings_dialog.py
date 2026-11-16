@@ -316,6 +316,9 @@ class SettingsDialog(QDialog):
     def novelai_page(self, layout):
         layout.addWidget(self.mirror(self.window.novelai_adjust))
         layout.addWidget(note(tr("「共有… → NovelAIでi2i」を選んだときに、渡す前の切り抜き・縮小の画面を表示します。")))
+        layout.addWidget(self.mirror(self.window.novelai_metadata))
+        layout.addWidget(note(tr("オンにすると、NovelAIへ渡すPNGに元の画像の生成情報（プロンプト・設定、Stealth PNGInfo）を付け、"
+                              "NovelAI側で読み込めるようにします。ほかのアプリへドラッグで渡す画像には付けません。")))
 
     def windows_page(self, layout):
         window = self.window

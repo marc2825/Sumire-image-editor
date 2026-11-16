@@ -3,6 +3,7 @@ from __future__ import annotations
 from .i18n import tr
 
 import hashlib
+import json
 import os
 import sqlite3
 from contextlib import closing
@@ -27,6 +28,25 @@ def label_folder_names() -> dict[str, list[str]]:
     return {label: [catalog.get(name, name) for catalog in catalogs] for label, name in FOLDER_NAMES.items()}
 
 
+MAX_TAGS, MAX_TAG_LENGTH = 30, 40
+
+
+def clean_tags(values) -> tuple[str, ...]:
+    """Tags as kept: trimmed, single-line, at most 40 characters, unique (ignoring case), sorted, at most 30."""
+    found = {}
+    for value in values:
+        text = " ".join(str(value).split())[:MAX_TAG_LENGTH].strip()
+        if text and text.casefold() not in found:
+            found[text.casefold()] = text
+    return tuple(sorted(found.values(), key=str.casefold))[:MAX_TAGS]
+
+
+def split_tags(text: str) -> tuple[str, ...]:
+    """Tags typed in one line: separated by commas (、，,) or line breaks."""
+    import re
+    return clean_tags(re.split(r"[,、，\n]", text))
+
+
 def label_key(path: Path) -> str:
     # Unlike save receipts, a label survives changes to the image at this path.
     return hashlib.sha256(os.path.normcase(str(path.resolve())).encode("utf-8")).hexdigest()
@@ -38,6 +58,7 @@ class ReviewLabels:
         self.path = record_path(self.folder)
         self.labels: dict[str, str] = {}
         self.notes: dict[str, str] = {}
+        self.tags: dict[str, tuple[str, ...]] = {}
         try:
             if self.path.is_symlink() or not self.path.is_file() or self.path.stat().st_size > 128 * 1024 * 1024:
                 return
@@ -53,6 +74,14 @@ class ReviewLabels:
                     for key, note in connection.execute("SELECT source, note FROM review_notes"):
                         if isinstance(key, str) and isinstance(note, str) and len(note) <= 4000:
                             self.notes[key] = note
+                if "review_tags" in tables:
+                    for key, value in connection.execute("SELECT source, tags FROM review_tags"):
+                        try:
+                            tags = clean_tags(json.loads(value)) if isinstance(value, str) and len(value) <= 8000 else ()
+                        except (ValueError, TypeError):
+                            tags = ()
+                        if isinstance(key, str) and tags:
+                            self.tags[key] = tags
         except (OSError, sqlite3.Error):
             pass
 
@@ -75,6 +104,15 @@ class ReviewLabels:
     def note(self, path):
         return self.notes.get(label_key(path), "")
 
+    def tags_of(self, path) -> tuple[str, ...]:
+        return self.tags.get(label_key(path), ())
+
+    def set_tags(self, values):
+        """{path: tags} for images of this folder; empty tags remove the row."""
+        if any(path.parent != self.folder for path in values):
+            raise ValueError("Tags belong to the source folder")
+        self._write({}, tags={label_key(path): clean_tags(tags) for path, tags in values.items()})
+
     def set_note(self, path, text):
         if path.parent != self.folder or len(text) > 4000:
             raise ValueError("Invalid review note")
@@ -84,18 +122,21 @@ class ReviewLabels:
         local = {old: new for old, new in mapping.items() if old.parent == self.folder}
         if any(new.parent != self.folder for new in local.values()):
             raise ValueError("Review label remapping requires the same folder")
-        if not local or not (self.labels or self.notes):
+        if not local or not (self.labels or self.notes or self.tags):
             return
         # Snapshot first so cycles and an unlabelled image replacing a labelled
         # path do not duplicate or inherit another image's label.
-        updates = {label_key(old): None for old in local}
+        updates: dict[str, str | None] = {label_key(old): None for old in local}
         updates.update({label_key(new): self.get(old) for old, new in local.items()})
         notes = {label_key(old): "" for old in local}
         notes.update({label_key(new): self.note(old) for old, new in local.items()})
-        self._write(updates, notes)
+        tags: dict[str, tuple[str, ...]] = {label_key(old): () for old in local}
+        tags.update({label_key(new): self.tags_of(old) for old, new in local.items()})
+        self._write(updates, notes, tags)
 
-    def _write(self, updates: dict[str, str | None], notes=None):
+    def _write(self, updates: dict[str, str | None], notes=None, tags=None):
         notes = notes or {}
+        tags = tags or {}
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             if self.path.is_symlink():
@@ -115,6 +156,11 @@ class ReviewLabels:
                         connection.execute("CREATE TABLE IF NOT EXISTS review_notes (source TEXT PRIMARY KEY, note TEXT NOT NULL)")
                         connection.executemany("DELETE FROM review_notes WHERE source = ?", [(key,) for key in notes])
                         connection.executemany("INSERT INTO review_notes VALUES (?, ?)", [(key, note) for key, note in notes.items() if note])
+                    if tags:
+                        connection.execute("CREATE TABLE IF NOT EXISTS review_tags (source TEXT PRIMARY KEY, tags TEXT NOT NULL)")
+                        connection.executemany("DELETE FROM review_tags WHERE source = ?", [(key,) for key in tags])
+                        connection.executemany("INSERT INTO review_tags VALUES (?, ?)",
+                                               [(key, json.dumps(list(value), ensure_ascii=False)) for key, value in tags.items() if value])
         except sqlite3.Error:
             raise OSError("Cannot write review labels") from None
         for key, label in updates.items():
@@ -127,3 +173,8 @@ class ReviewLabels:
                 self.notes[key] = note
             else:
                 self.notes.pop(key, None)
+        for key, value in tags.items():
+            if value:
+                self.tags[key] = value
+            else:
+                self.tags.pop(key, None)

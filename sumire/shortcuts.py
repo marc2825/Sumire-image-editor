@@ -23,7 +23,7 @@ COMMANDS = {
     "next_tab": (tr("次のタブ"), ("Ctrl+Tab",)),
     "previous_tab": (tr("前のタブ"), ("Ctrl+Shift+Tab",)),
     "rename": (tr("画像の名前を変更"), ("F2",)),
-    "search": (tr("名前・メモで検索"), ("Ctrl+F",)),
+    "search": (tr("名前・メモ・タグで検索"), ("Ctrl+F",)),
     "accepted": (tr("採用"), ("1",)),
     "pending": (tr("保留"), ("2",)),
     "rejected": (tr("不採用"), ("3",)),
@@ -43,8 +43,9 @@ COMMANDS = {
     "strength_up": (tr("強さ・不透明度を上げる"), (".",)),
     "cancel_stroke": (tr("描画中のストロークを取り消す"), ("Esc",)),
     "help": (tr("ヘルプを開く"), ("F1",)),
-    "copy_image": (tr("編集結果を画像としてコピー"), ("Ctrl+C",)),
-    "paste_image": (tr("クリップボードの画像を開く"), ("Ctrl+V",)),
+    "copy_image": (tr("コピー（一覧では画像ファイル、ほかでは編集結果）"), ("Ctrl+C",)),
+    "cut_files": (tr("画像ファイルを切り取る"), ("Ctrl+X",)),
+    "paste_image": (tr("貼り付け（画像ファイルはタブのフォルダーへ、画像は新しく開く）"), ("Ctrl+V",)),
     "fullscreen": (tr("全画面表示"), ("F11",)),
 }
 CANVAS_COMMANDS = {"eraser", "mask", "pan", "cancel_stroke"}
@@ -89,7 +90,7 @@ def load_bindings(preferences):
                 bindings[name] = normalize(raw[name])
             # Preserve valid assignments made before these commands existed.
             # Their new defaults yield to an explicit older assignment.
-            for name in ("copy_image", "paste_image", "fullscreen"):
+            for name in ("copy_image", "cut_files", "paste_image", "fullscreen"):
                 if name not in raw:
                     assigned = {key for other, keys in bindings.items() if other != name for key in keys}
                     bindings[name] = [key for key in bindings[name] if key not in assigned]

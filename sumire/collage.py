@@ -25,8 +25,10 @@ class CollageSpec:
 
 def collage_layouts(count):
     """(title, rows, columns) choices for ``count`` images, the most natural first."""
-    if count < 2:
+    if count < 1:
         return []
+    if count == 1:
+        return [(tr("1枚（余白・背景を付ける、切り抜く）"), 1, 1)]
     grids = []
     for columns in range(2, 5):
         rows = math.ceil(count / columns)
@@ -41,8 +43,8 @@ def collage_layouts(count):
 
 
 def _cell_and_canvas(sizes, spec):
-    if not 2 <= len(sizes) <= MAX_COLLAGE:
-        raise ImageProblem(tr("コラージュにできるのは2〜{MAX_COLLAGE}枚です。").format(MAX_COLLAGE=MAX_COLLAGE))
+    if not 1 <= len(sizes) <= MAX_COLLAGE:
+        raise ImageProblem(tr("コラージュにできるのは1〜{MAX_COLLAGE}枚です。").format(MAX_COLLAGE=MAX_COLLAGE))
     if spec.rows * spec.columns < len(sizes) or spec.fit not in {"contain", "cover"} or not 0 <= spec.gap <= 1000:
         raise ImageProblem(tr("コラージュの並べ方を確認してください。"))
     cell_w = max(1, round(median(width for width, _ in sizes)))
