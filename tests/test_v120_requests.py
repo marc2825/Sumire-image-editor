@@ -303,3 +303,19 @@ def test_reset_edits_says_whether_it_will_be_saved(qtbot, window, monkeypatch):
     idle(qtbot, window)
     window.reset_edits()
     assert len(seen) == 2 and "自動保存" in seen[0] and "未保存" in seen[1]
+
+
+def test_a_rename_whose_records_cannot_be_updated_stops_and_says_so(qtbot, window, monkeypatch):
+    """Issue #2: records are renamed with the files in one transaction, so a failure is an error,
+    never a rename reported as done with a count of record failures."""
+    from sumire.imaging import ImageProblem
+    source = window.document.path
+    window.set_review_label("accepted")
+
+    def fail(*args, **kwargs):
+        raise ImageProblem("管理記録を更新できません（テスト）")
+    monkeypatch.setattr("sumire.rename_features.rename_images", fail)
+    window.rename_paths({source: source.with_name("renamed.png")})
+    qtbot.waitUntil(lambda: window.batch_job is None, timeout=10000)
+    assert "管理記録を更新できません" in window.status.text() and "名前を変更しました" not in window.status.text()
+    assert source.exists() and window.model.labels[source] == "accepted"

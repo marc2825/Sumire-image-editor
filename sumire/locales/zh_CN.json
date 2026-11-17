@@ -9,8 +9,6 @@
  "\n囲んだ範囲の外側に適用します。": "\n应用于圈选范围的外侧。",
  "\n表示 {shown} / {total}": "\n显示 {shown} / {total}",
  "\n（元画像：{source_size:,} × {source_size2:,} px）": "\n（原图：{source_size:,} × {source_size2:,} px）",
- " / ラベル記録の更新失敗 {label_warnings}（再設定してください）": " / 标签记录更新失败 {label_warnings}（请重新设置）",
- " / 保存記録の更新失敗 {warnings}": " / 保存记录更新失败 {warnings}",
  " / 再開用の記録失敗 {receipt_failures}": " / 用于恢复工作的记录失败 {receipt_failures}",
  " / 失敗 {count}枚": " / 失败 {count} 张",
  " / 移せなかった画像 {count}枚（ごみ箱のない場所や、使用中のファイル）": " / 未能移动的图像 {count} 张（没有回收站的位置，或正在使用的文件）",

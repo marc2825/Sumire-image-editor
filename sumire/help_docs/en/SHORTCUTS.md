@@ -1,7 +1,6 @@
 # Shortcuts
 
-These are the default keys. Change them in “Settings (gear) → Shortcuts” at the top right (up to two keys per command; a key cannot be used for two commands).
-Keys that act on the image work when the image area is selected. While you type text, typing takes priority.
+These are the default keys. Change them in “Settings (gear) → Shortcuts” at the top right (up to two keys per command; a key cannot be used for two commands). Keys that act on the image work when the image area is selected. While you type text, typing takes priority.
 
 | Command | Key |
 | --- | --- |
@@ -15,7 +14,7 @@ Keys that act on the image work when the image area is selected. While you type 
 | New tab / close tab | Ctrl+T / Ctrl+W |
 | Next / previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
 | Rename | F2, or double-click the image name |
-| Search names and notes | Ctrl+F |
+| Search names, notes and tags | Ctrl+F |
 | Accept / Hold / Reject | 1 / 2 / 3 |
 | Remove label | Alt+0 |
 | Undo the last organising step | Ctrl+Alt+Z |
@@ -44,6 +43,6 @@ Keys that act on the image work when the image area is selected. While you type 
 | Remove the last point / cancel | Backspace / Esc |
 | Confirm / cancel a name | Enter / Esc |
 
-“Undo” only undoes edits to the image. Labels, order, names, notes and folder moves are undone with “Undo the last organising step”.
+“Undo” only undoes edits to the image. Labels, tags, order, names, notes and folder moves are undone with “Undo the last organising step”.
 
 [Getting started](USER_GUIDE.md) · [Features](FEATURES.md)

@@ -1,6 +1,6 @@
 r"""Native Windows smoke test of the distribution folder, using only synthetic images.
 
-    python -m scripts.smoke_windows_exe dist\Sumire-v1.2.0-win64 --artifacts test-artifacts\windows-exe [--shell-verbs]
+    python -m scripts.smoke_windows_exe dist\Sumire-v1.2.1-win64 --artifacts test-artifacts\windows-exe [--shell-verbs]
 
 Run from a Windows test environment with Pillow, pywinauto, psutil and pywin32.
 It moves the real mouse and keyboard: do not use the PC until it finishes.

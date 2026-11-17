@@ -80,25 +80,20 @@ class RenameFeatures:
         record_folders = self.workspace_host.rename_record_folders(mapping) if self.workspace_host is not None else set()
 
         def process(cancel, report):
-            indexes = {folder: Receipts(folder) for folder in {path.parent for path in mapping}}
-            label_indexes = {folder: ReviewLabels(folder) for folder in {path.parent for path in mapping}}
-            if self.receipts:
-                indexes[self.receipts.folder] = self.receipts
-            for folder in record_folders:
-                if folder not in indexes:
-                    indexes[folder] = Receipts(folder)
+            image_folders = {path.parent for path in mapping}
+            folders = image_folders | set(record_folders) | ({self.receipts.folder} if self.receipts else set())
             expected = self.operation_history[-1][1][1] if undoing else None
-            rename_images(mapping, cancel=cancel, progress=report, expected_digests=expected, record_folders=set(indexes))
-            indexes = {folder: Receipts(folder) for folder in indexes}
-            label_indexes = {folder: ReviewLabels(folder) for folder in label_indexes}
-            warnings = 0
-            label_warnings = 0
+            # The records (save receipts, labels, notes, tags, masks) are renamed in the same journaled
+            # transaction as the files: if one cannot be updated, the whole rename stops with an error.
+            rename_images(mapping, cancel=cancel, progress=report, expected_digests=expected, record_folders=folders)
+            indexes = {folder: Receipts(folder) for folder in folders}
+            label_indexes = {folder: ReviewLabels(folder) for folder in image_folders}
             digests = {new: file_digest(new) for new in mapping.values()}
-            return indexes, warnings, label_indexes, label_warnings, digests
+            return indexes, label_indexes, digests
 
         def done(result):
             self.batch_job = None
-            indexes, warnings, label_indexes, label_warnings, digests = result
+            indexes, label_indexes, digests = result
             self.source_indexes.update(indexes)
             if self.receipts and self.receipts.folder in indexes:
                 self.receipts = indexes[self.receipts.folder]
@@ -127,8 +122,7 @@ class RenameFeatures:
                 self.prepare_effect()
             else:
                 self._load_index(self.model.rows[mapping.get(selected, selected)])
-            self.info(tr("名前を変更しました · {count}枚").format(count=len(mapping)) + (tr(" / 保存記録の更新失敗 {warnings}").format(warnings=warnings) if warnings else "")
-                      + (tr(" / ラベル記録の更新失敗 {label_warnings}（再設定してください）").format(label_warnings=label_warnings) if label_warnings else ""))
+            self.info(tr("名前を変更しました · {count}枚").format(count=len(mapping)))
             self.update_controls()
             self.pathsRenamed.emit(mapping)
 

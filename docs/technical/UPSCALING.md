@@ -1,6 +1,6 @@
 # 超解像（Lanczos3による拡大）
 
-「⋯ → 超解像を適用」は、表示中の画像を1.5・2・3・4倍に拡大します。**拡大には機械学習を使わず、Lanczos3という補間（リサンプリング）を使います。** 一般に「超解像」と呼ばれる、学習済みモデルで細部を描き足す方法とは違います。
+「⋯ → 超解像を適用」は、表示中の画像を1.5・2・3・4倍に拡大します。拡大には機械学習を使わず、Lanczos3という補間（リサンプリング）を使います。 一般に「超解像」と呼ばれる、学習済みモデルで細部を描き足す方法とは違います。
 
 ## 仕組み
 
@@ -27,7 +27,7 @@ sinc(x) = sin(πx) / (πx)
 | 結果 | 同じ入力からは常に同じ結果 | モデルや設定で結果が変わる |
 | 配布・動作 | 追加のモデルが要らず、CPUですぐ終わる | モデルの同梱（大きさ・ライセンス）と、多くの計算が必要 |
 
-Sumīreは画像の一部を隠すためのアプリなので、**隠した部分に情報を描き足さない**ことを優先してLanczos3を選んでいます。拡大しても、モザイクやぼかしで隠した部分が復元されることはありません。
+Sumīreは画像の一部を隠すためのアプリなので、隠した部分に情報を描き足さないことを優先してLanczos3を選んでいます。拡大しても、モザイクやぼかしで隠した部分が復元されることはありません。
 
 ## ほかに使っている場所
 
@@ -46,11 +46,9 @@ Sumīreは画像の一部を隠すためのアプリなので、**隠した部�
 
 ## 該当するコード
 
-| 場所 | 内容 |
-| --- | --- |
-| [`sumire/editing.py`](../../sumire/editing.py) | `lanczos3_resize`（乗算済みアルファでの補間）、`upscaled_size`（倍率と上限の確認）、`upscale_lanczos3` |
-| [`sumire/output_dialogs.py`](../../sumire/output_dialogs.py) | 「超解像を適用」の画面（`UpscaleDialog`） |
-| [`sumire/output_features.py`](../../sumire/output_features.py) | 表示中の画像への適用（`upscale_image`） |
+- [`sumire/editing.py`](../../sumire/editing.py)：`lanczos3_resize`（乗算済みアルファでの補間）、`upscaled_size`（倍率と上限の確認）、`upscale_lanczos3`
+- [`sumire/output_dialogs.py`](../../sumire/output_dialogs.py)：「超解像を適用」の画面（`UpscaleDialog`）
+- [`sumire/output_features.py`](../../sumire/output_features.py)：表示中の画像への適用（`upscale_image`）
 
 補間そのものは[Pillow](https://python-pillow.org/)の `Image.Resampling.LANCZOS` が行います。Pillowの実装では、窓の幅は3です（`src/libImaging/Resample.c` の `lanczos_filter`）。
 

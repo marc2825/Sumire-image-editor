@@ -1,6 +1,7 @@
 # Sumīre features
 
 Sumīre hides parts of images, shows and removes metadata, and helps you sort and export images. All image processing happens on your PC.
+
 If you are new, start with [Getting started](USER_GUIDE.md).
 
 ## Open and organise
@@ -11,12 +12,14 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | Work on several things at once | Tabs. They are restored at the next start. Double-click a tab to rename it |
 | Open or create folders inside | The folder bar above the list |
 | Move images to another folder | Drag them onto a folder in the bar, or right-click → “Move to folder” |
-| Search and sort | The search box (file names and notes), the filter button (order, labels, list / grid and thumbnail size), dragging in the list, typing a number into “4 / 111” above the image |
+| Cut, copy and paste image files | Ctrl+X, Ctrl+C, Ctrl+V in the list, or right-click (works with Explorer too) |
+| Search and sort | The search box (file names, notes and tags), the filter button (order, labels, tags, list / grid and thumbnail size), dragging in the list, typing a number into “4 / 111” above the image |
 | Rename | Double-click the image name, or F2. For numbering, the list's “⋯ → Renumber in order” or right-click (zero-padded: 00, 01…) |
 | Add a note | Right-click in the list → “Note” |
 | Remove from the list | Right-click → “Remove from list” (the file is not deleted; Ctrl+R or ⟳ in the folder row brings it back) |
 | Delete images | Right-click → “Delete images…” (after asking, moves them to the Recycle Bin) |
 | Remove duplicates | The list's “⋯ → Remove duplicates”. All but the one you keep go to the Recycle Bin |
+| Compare | Select 2–6 images, right-click → “Compare side by side” |
 
 ## Hide and adjust
 
@@ -29,7 +32,7 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | Pick a colour / draw a straight line | Alt+click for the eyedropper, Shift+click for a straight line |
 | Crop or resize | “Crop” below the image. Drag the corners or edges to set the area |
 | Rotate or flip | “More settings” in the right panel |
-| Adjust colours | “Adjust colours” in “More settings”. Brightness, contrast, saturation, hue, exposure, temperature and gamma, plus More adjustments (highlights, shadows, white / black level, RGB, sharpness) |
+| Adjust colours | “Adjust colours” in “More settings” |
 | Zoom | Type a number into the zoom box at the bottom right, “Fit”, “100%”, or Ctrl+wheel |
 | Enlarge | “More → Upscale” in “⋯” or the image's right-click menu (1.5–4×) |
 | Reuse settings | Edit presets in “More settings” |
@@ -39,30 +42,28 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | What you want | Where |
 | --- | --- |
 | Label images | “Accept”, “Hold”, “Reject” at the bottom right, or the 1, 2, 3 keys. Applies to every selected image |
+| Tag images | Right-click → “Tags…” (several images at once) |
 | Sort into label folders | “Export by label” above the list (moves into a folder per label; can also copy, and renumber) |
 | Sort as you label | Right-click → “Label → Sort into label folders automatically” (where Accept / Hold / Reject folders exist) |
+| Gather label folders | The list's “⋯ → Gather the label folders…” |
 | Remove all labels | “Reset sorting” above the list |
-| Return the list to its first state | The list's “⋯ → Reset the whole list” (this session's overwrites, labels, notes, order, filters) |
-| Undo organising | The arrow above the list (Ctrl+Alt+Z). Undoes labels, order, names, notes and moves |
-| Compare | Select 2–6 images, right-click → “Compare side by side” |
+| Return the list to its first state | The list's “⋯ → Reset the whole list” (this session's overwrites, labels, notes, tags, order, filters) |
+| Undo organising | The arrow above the list (Ctrl+Alt+Z). Undoes labels, tags, order, names, notes and moves |
 
 ## Save and export
 
 | What you want | Where |
 | --- | --- |
 | Change how images are saved | “Overwrite · auto-save ▾” at the top right |
-| See the metadata | Press “Metadata: yes / none” above the image (contents shown by type) |
+| See the metadata | “Metadata: yes / none” above the image |
 | Remove metadata | “Remove metadata” above the image, or “Remove all metadata” above the list. It can also be removed on every save |
+| Get removed metadata back | “⋯ → More → Save a copy with restored metadata” |
 | Undo an overwrite | “Restore original” above the image, or “⋯ → Restore the original from before overwriting” (until the app closes) |
 | Save under another name | “Save as” in “⋯” or the image's right-click menu |
 | Change the format | Right-click → “Convert format” (for the whole list, the list's “⋯”) |
-| Make files smaller | Right-click → “Reduce file size”. Shows how much smaller they get before writing. Can also overwrite the originals (same format only) |
-| Combine images | Select images, right-click → “Make a collage” (from one image; “Add images…” adds more). Grid or free layout; each image can be cropped |
-| Tag and filter | Right-click → “Tags…” (several images at once). “Filter by tag” under the filter button, or the search |
-| Gather label folders | The list's “⋯ → Gather the label folders…” (collects the images of the Accept / Hold / Reject folders into one) |
-| Cut, copy and paste image files | Ctrl+X, Ctrl+C, Ctrl+V in the list, or right-click (works with Explorer too) |
-| Get removed metadata back | “⋯ → More → Save a copy with restored metadata” |
-| Copy and paste | Ctrl+C copies the result, Ctrl+V opens the clipboard image in a new tab |
+| Make files smaller | Right-click → “Reduce file size”. Shows how much smaller they get before writing. Images whose format stays the same can also overwrite the originals |
+| Combine images | Select images, right-click → “Make a collage” (from one image). Grid or free layout; each image can be cropped |
+| Copy the result or open a pasted image | Ctrl+C copies the result, Ctrl+V opens the clipboard image in a new tab |
 | Continue editing later | “File → Save edit project with the original” |
 | Hand images to NovelAI or other apps | “Share” to the right of the image name (NovelAI i2i, Copy image, Drag to share) |
 
@@ -72,7 +73,7 @@ The gear at the top right opens the settings: Save, Records, Shortcuts, Display 
 
 ## Please note
 
-- **An overwritten original cannot be brought back after the app closes.** To keep originals, save to a separate folder.
+- An overwritten original cannot be brought back after the app closes. To keep originals, save to a separate folder.
 - By default, metadata is kept when saving. To remove it, use “Remove metadata”, or turn on “Remove metadata when saving”.
 - Mosaic and blur cannot hide completely. For anything that must stay hidden, use fill at 100% opacity.
 - Metadata kept for restoring is not encrypted. See [Metadata and restoring](METADATA.md).

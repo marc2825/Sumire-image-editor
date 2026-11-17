@@ -14,7 +14,7 @@ Known limits, such as mosaic and blur not hiding completely, are described in [S
 
 ## How to report
 
-**Do not post it in a public issue.** Report privately with “Report a vulnerability” on the GitHub repository's “Security” tab. If you got Sumīre from a distribution site, use the contact on that page.
+Do not post it in a public issue. Report privately with “Report a vulnerability” on the GitHub repository's “Security” tab. If you got Sumīre from a distribution site, use the contact on that page.
 
 Helpful details:
 
@@ -22,7 +22,7 @@ Helpful details:
 - Steps to reproduce, and what you expected and what happened
 - The kind of information left behind (EXIF, PNG text, Stealth PNGInfo and so on)
 
-**Do not attach private images or records (`.sumire-index.sqlite3` and the like).** Reproduce the problem with synthetic images or images that may be made public.
+Do not attach private images or records (`.sumire-index.sqlite3` and the like). Reproduce the problem with synthetic images or images that may be made public.
 
 ## Versions
 

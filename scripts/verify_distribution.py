@@ -1,7 +1,7 @@
 """Check a packaged Windows ZIP the way a user would get it.
 
-    python -m scripts.verify_distribution dist\\Sumire-v1.2.0-win64.zip --report test-artifacts\\distribution.json
-    python -m scripts.verify_distribution dist\\Sumire-v1.2.0-win64.zip --replace-qt C:\\qt\\6.12.0\\msvc2022_64
+    python -m scripts.verify_distribution dist\\Sumire-v1.2.1-win64.zip --report test-artifacts\\distribution.json
+    python -m scripts.verify_distribution dist\\Sumire-v1.2.1-win64.zip --replace-qt C:\\qt\\6.12.0\\msvc2022_64
 
 Run on Windows with the environment that built the ZIP. It
 - compares the ZIP with its external .sha256 file and every file with SHA256SUMS.txt inside,
