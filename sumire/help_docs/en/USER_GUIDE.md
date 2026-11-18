@@ -36,6 +36,8 @@ Choose Mosaic, Blur or Fill in the right panel and trace over what you want to h
 - Mask: tints the edited areas (the tint is not saved).
 - Reset edits and mask: removes all edits. Ctrl+Z undoes it.
 
+To add text, choose “Text” (T) and click the image. In the window that opens, choose the text, font, size, colour and bold, and see the result on the image. The point you click becomes the top left of the text; Undo or the eraser removes it.
+
 ## 4. Next image
 
 - The ← → keys move between images. Images you did not edit are not saved just by moving on.
@@ -63,6 +65,7 @@ See also [Metadata and restoring](METADATA.md).
 - With “Next after labelling” (on by default), labelling moves on to the next image.
 - Select several with Ctrl or Shift to label them together.
 - Right-click → “Tags…” adds free-form tags, separate from labels.
+- Tags you use often can be added and removed with the “Custom tags” buttons at the bottom right (“Needs fixing” at first; keys 4–9 from the top). “Edit” adds, renames, deletes and reorders them.
 
 Labels never delete images.
 

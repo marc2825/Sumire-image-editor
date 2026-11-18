@@ -28,8 +28,15 @@ COMMANDS = {
     "pending": (tr("保留"), ("2",)),
     "rejected": (tr("不採用"), ("3",)),
     "clear_label": (tr("ラベルを解除"), ("Alt+0",)),
+    "quick_tag_1": (tr("オリジナルタグ{number}の付け外し").format(number=1), ("4",)),
+    "quick_tag_2": (tr("オリジナルタグ{number}の付け外し").format(number=2), ("5",)),
+    "quick_tag_3": (tr("オリジナルタグ{number}の付け外し").format(number=3), ("6",)),
+    "quick_tag_4": (tr("オリジナルタグ{number}の付け外し").format(number=4), ("7",)),
+    "quick_tag_5": (tr("オリジナルタグ{number}の付け外し").format(number=5), ("8",)),
+    "quick_tag_6": (tr("オリジナルタグ{number}の付け外し").format(number=6), ("9",)),
     "undo_organize": (tr("直前の整理操作を戻す"), ("Ctrl+Alt+Z",)),
     "eraser": (tr("消しゴムの切り替え（キャンバス上）"), ("E",)),
+    "text": (tr("テキストの切り替え（キャンバス上）"), ("T",)),
     "mask": (tr("加工マスクの表示（キャンバス上）"), ("M",)),
     "compare": (tr("元画像と比較（押している間）"), ("Tab",)),
     "pan": (tr("表示位置を動かす（押しながらドラッグ）"), ("Space",)),
@@ -48,8 +55,9 @@ COMMANDS = {
     "paste_image": (tr("貼り付け（画像ファイルはタブのフォルダーへ、画像は新しく開く）"), ("Ctrl+V",)),
     "fullscreen": (tr("全画面表示"), ("F11",)),
 }
-CANVAS_COMMANDS = {"eraser", "mask", "pan", "cancel_stroke"}
+CANVAS_COMMANDS = {"eraser", "text", "mask", "pan", "cancel_stroke"}
 HOST_COMMANDS = {"new_tab", "close_tab", "next_tab", "previous_tab"}
+QUICK_TAG_COMMANDS = tuple(f"quick_tag_{number}" for number in range(1, 7))
 PORTABLE = QKeySequence.SequenceFormat.PortableText
 
 
@@ -90,7 +98,7 @@ def load_bindings(preferences):
                 bindings[name] = normalize(raw[name])
             # Preserve valid assignments made before these commands existed.
             # Their new defaults yield to an explicit older assignment.
-            for name in ("copy_image", "cut_files", "paste_image", "fullscreen"):
+            for name in ("copy_image", "cut_files", "paste_image", "fullscreen", "text", *QUICK_TAG_COMMANDS):
                 if name not in raw:
                     assigned = {key for other, keys in bindings.items() if other != name for key in keys}
                     bindings[name] = [key for key in bindings[name] if key not in assigned]

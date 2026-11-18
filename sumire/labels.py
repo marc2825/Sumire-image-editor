@@ -41,6 +41,28 @@ def clean_tags(values) -> tuple[str, ...]:
     return tuple(sorted(found.values(), key=str.casefold))[:MAX_TAGS]
 
 
+MAX_QUICK_TAGS = 9
+
+
+def ordered_tags(values, limit=MAX_QUICK_TAGS) -> list[str]:
+    """Like clean_tags, but in the given order (the order of the tag buttons)."""
+    found: dict[str, str] = {}
+    for value in values:
+        text = " ".join(str(value).split())[:MAX_TAG_LENGTH].strip()
+        if text and text.casefold() not in found:
+            found[text.casefold()] = text
+    return list(found.values())[:limit]
+
+
+def quick_tags(data) -> list[str]:
+    """The tag buttons of the settings ``data``: 「要修正」 until the list was edited once."""
+    from .i18n import tr
+    value = data.get("quick_tags") if isinstance(data, dict) else None
+    if not isinstance(value, list):
+        return [tr("要修正")]
+    return ordered_tags(item for item in value if isinstance(item, str))
+
+
 def split_tags(text: str) -> tuple[str, ...]:
     """Tags typed in one line: separated by commas (、，,) or line breaks."""
     import re

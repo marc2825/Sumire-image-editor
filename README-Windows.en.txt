@@ -1,4 +1,4 @@
-Sumīre 1.2.1 / Windows 11 x64
+Sumīre 1.3.0 / Windows 11 x64
 
 Getting started
 Extract the whole ZIP and double-click sumire.exe. Python is not needed.
@@ -17,6 +17,8 @@ Main features
 - Folders: open or create folders inside from the bar above the list. Drag images onto a folder to move them.
 - Right-click an image: Save as, Convert format, Reduce file size, Upscale, Compare, Make a collage, numbering, Tags, Remove from list, Delete images (to the Recycle Bin).
 - Crop, Compare and Mask are below the image; rotate, flip and colour are in “More settings” in the right panel.
+- Text: choose “Text” (T) in the right panel and click the image to add text.
+- Custom tags: tags you use often, such as “Needs fixing”, are added and removed with the buttons under Sorting (keys 4–9).
 - Ctrl+C copies the result; Ctrl+V opens the clipboard image in a new tab. With the list focused, they cut, copy and paste the image files instead (Ctrl+X, Ctrl+C, Ctrl+V).
 
 Metadata

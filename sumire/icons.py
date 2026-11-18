@@ -165,6 +165,17 @@ def _draw(painter: QPainter, name: str, color: QColor):
         painter.resetTransform()
         painter.scale(_SIZE / 16, _SIZE / 16)
         _line(painter, (7.5, 13.5), (13.5, 13.5))
+    elif name == "text":
+        # A "T": the bar with small serifs, the stem with a foot.
+        _line(painter, (3, 4.5), (3, 3), (13, 3), (13, 4.5))
+        _line(painter, (8, 3), (8, 13))
+        _line(painter, (6, 13), (10, 13))
+    elif name == "tag":
+        path = QPainterPath(QPointF(2.5, 2.5))
+        for x, y in ((8.5, 2.5), (13.5, 7.5), (8, 13), (2.5, 7.5), (2.5, 2.5)):
+            path.lineTo(QPointF(x, y))
+        painter.drawPath(path)
+        painter.drawEllipse(QPointF(5.5, 5.5), 1, 1)
     elif name == "check":
         _line(painter, (3.5, 8.5), (6.5, 11.5), (12.5, 4.5))
     elif name == "note":

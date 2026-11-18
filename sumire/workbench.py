@@ -20,7 +20,9 @@ from .export import check_cancel, file_digest
 from .folders import label_folder_target
 from .icons import icon, swatch
 from .imaging import ImageProblem, load_image
-from .labels import REVIEW_LABELS, ReviewLabels
+from .labels import MAX_TAGS, REVIEW_LABELS, ReviewLabels, clean_tags
+from .shortcuts import QUICK_TAG_COMMANDS
+from .text_tool import TextStyle
 from .library import COMPACT_GRID, LIST_ICON, LibraryDelegate, LibraryFilter, LibraryModel, LibraryView
 from .monitor import FolderMonitor
 from .organize import sequence_stems
@@ -886,7 +888,7 @@ class Workbench:
             self.operation_history.append(("labels", changed))
         self.update_controls()
 
-    def write_tags(self, values, history=None):
+    def write_tags(self, values, history=None, message=None):
         """{path: tags} into each folder's records; ``history`` (the tags before) makes it undoable."""
         grouped = defaultdict(dict)
         for path, tags in values.items():
@@ -901,7 +903,7 @@ class Workbench:
         except (OSError, ValueError):
             self.error(tr("タグを保存できませんでした。管理記録の保存先の空き容量とアクセス権を確認してください。"))
         else:
-            self.info(tr("タグを変更しました · {count}枚").format(count=len(values)))
+            self.info(message or tr("タグを変更しました · {count}枚").format(count=len(values)))
         if history is not None and written:
             self.operation_history.append(("tags", written))
         self.refresh_tag_filter()
@@ -921,6 +923,101 @@ class Workbench:
         changed = {path: tags for path, tags in dialog.result_tags().items() if path in self.model.rows}
         if changed:
             self.write_tags(changed, {path: current[path] for path in changed})
+
+    # --- オリジナルタグ: tags the user keeps as buttons below the labels ---------------------------
+
+    def build_quick_tag_buttons(self):
+        for button in self.quick_tag_buttons:
+            self.quick_tag_grid.removeWidget(button)
+            button.deleteLater()
+        self.quick_tag_buttons = []
+        for number, tag in enumerate(self.quick_tags):
+            button = QPushButton()
+            button.setObjectName("toggle")
+            button.setCheckable(True)
+            button.setProperty("tag", tag)
+            button.setAccessibleName(tag)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            button.setText(button.fontMetrics().elidedText(tag, Qt.TextElideMode.ElideRight, 80))
+            button.clicked.connect(lambda checked=False, index=number: self.press_quick_tag(index))
+            self.quick_tag_grid.addWidget(button, *divmod(number, 3))
+            self.quick_tag_buttons.append(button)
+        for column in range(3):
+            self.quick_tag_grid.setColumnStretch(column, 1)
+        if hasattr(self, "bindings"):
+            self.update_quick_tag_hints()
+
+    def update_quick_tag_hints(self):
+        for number, button in enumerate(self.quick_tag_buttons):
+            key = self.shortcut_hint(QUICK_TAG_COMMANDS[number]) if number < len(QUICK_TAG_COMMANDS) else ""
+            button.setToolTip((key + " · " if key else "") +
+                              tr("「{tag}」を付け外しします。複数選択した画像にはまとめて付けます。").format(tag=button.property("tag")))
+
+    def update_quick_tag_states(self, enabled):
+        paths = [path for path in self.selected_or_current() if path in self.model.rows] if enabled else []
+        for button in self.quick_tag_buttons:
+            tag = str(button.property("tag")).casefold()
+            button.setEnabled(enabled)
+            button.setChecked(bool(paths) and all(tag in {value.casefold() for value in self.model.tags.get(path, ())}
+                                                  for path in paths))
+        self.quick_tag_edit.setEnabled(not self.busy() and not self.saving)
+
+    def press_quick_tag(self, index):
+        """Add the button's tag to the chosen images, or take it off when they all have it."""
+        if self.busy() or self.saving or not self.document:
+            return
+        if index >= len(self.quick_tags):
+            self.info(tr("オリジナルタグ{number}はまだありません。「編集」で追加できます。").format(number=index + 1))
+            return
+        tag = self.quick_tags[index]
+        key = tag.casefold()
+        current = {path: self.model.tags.get(path, ()) for path in self.selected_or_current() if path in self.model.rows}
+        if not current:
+            return
+        remove = all(key in {value.casefold() for value in tags} for tags in current.values())
+        changed = {}
+        for path, tags in current.items():
+            new = clean_tags([value for value in tags if value.casefold() != key] if remove else [*tags, tag])
+            if not remove and key not in {value.casefold() for value in new}:
+                self.error(tr("タグは1枚に{count}個までです。").format(count=MAX_TAGS))
+                return
+            if new != tags:
+                changed[path] = new
+        if changed:
+            message = (tr("「{tag}」を外しました · {count}枚") if remove else tr("「{tag}」を付けました · {count}枚")).format(tag=tag, count=len(changed))
+            self.write_tags(changed, {path: current[path] for path in changed}, message)
+
+    def edit_quick_tags(self):
+        if self.busy() or self.saving:
+            return
+        from .tag_dialog import QuickTagDialog
+        dialog = QuickTagDialog(self.quick_tags, self)
+        if not self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted) or self.busy() or self.saving:
+            return
+        tags, renames = dialog.chosen()
+        data = dict(self.preferences.data)
+        data["quick_tags"] = tags
+        try:
+            self.preferences.save(data)
+        except OSError:
+            self.error(tr("設定を保存できません。設定の保存先を確認してください。"))
+            return
+        host = self.workspace_host
+        for page in [self] if host is None else [host.welcome, *host.workspaces()]:
+            page.quick_tags = list(tags)
+            page.build_quick_tag_buttons()
+            page.update_controls()
+        if renames and dialog.rename_existing.isChecked():
+            folded = {old.casefold(): new for old, new in renames.items()}
+            current = {path: values for path, values in self.model.tags.items()
+                       if path in self.model.rows and any(value.casefold() in folded for value in values)}
+            changed = {path: clean_tags([folded.get(value.casefold(), value) for value in values]) for path, values in current.items()}
+            changed = {path: values for path, values in changed.items() if values != current[path]}
+            if changed:
+                self.write_tags(changed, {path: current[path] for path in changed},
+                                tr("オリジナルタグを保存し、タグの名前を変えました · {count}枚").format(count=len(changed)))
+                return
+        self.info(tr("オリジナルタグを保存しました。"))
 
     def edit_note(self):
         if not self.document or self.busy() or self.saving:
@@ -1241,6 +1338,7 @@ class Workbench:
             "jpeg_quality": self.jpeg_quality,
             "inverse_selection": self.inverse_action.isChecked(),
             "navigator": self.navigator_action.isChecked(),
+            "text": self.text_style.to_settings(),
         }
 
     def workspace_state(self, *, session=False):
@@ -1311,6 +1409,8 @@ class Workbench:
                 if isinstance(value, int):
                     self.mode_strengths[mode] = max(0 if mode == "fill" else 2, min(100, value))
         self.strength.setValue(self.mode_strengths[self.mode])
+        if "text" in data:
+            self.text_style = TextStyle.from_settings(data["text"])
         color = data.get("color", "#000000")
         if isinstance(color, str) and len(color) == 7 and color.startswith("#") and all(c in "0123456789abcdefABCDEF" for c in color[1:]):
             self.color = color

@@ -7,7 +7,7 @@ An English summary is at the end.
 
 ## 配布物に入っているもの
 
-`Sumire-v1.2.1-win64.zip` を展開したフォルダーの `_internal` に、次のファイルがそのまま（改変・圧縮せずに）入っています。どれも PyPI の wheel（PySide6-Essentials 6.12.0・shiboken6 6.12.0）に含まれていたものです。
+`Sumire-v1.3.0-win64.zip` を展開したフォルダーの `_internal` に、次のファイルがそのまま（改変・圧縮せずに）入っています。どれも PyPI の wheel（PySide6-Essentials 6.12.0・shiboken6 6.12.0）に含まれていたものです。
 
 | 種類 | 版 | 場所（`_internal\` から） |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ An English summary is at the end.
 
 ## ソースコード
 
-- **Qt・PySide6・shiboken6**：同じ版の公式のソース一式を `Sumire-v1.2.1-qt-pyside6-source.zip` にまとめ、配布 ZIP と同じ場所から配布します。中身は download.qt.io で公開されている次のアーカイブで、Qt が公開している SHA-256 と照合しています。
+- **Qt・PySide6・shiboken6**：同じ版の公式のソース一式を `Sumire-v1.3.0-qt-pyside6-source.zip` にまとめ、配布 ZIP と同じ場所から配布します。中身は download.qt.io で公開されている次のアーカイブで、Qt が公開している SHA-256 と照合しています。
   - `qtbase-everywhere-src-6.12.0.tar.xz`
   - `qtsvg-everywhere-src-6.12.0.tar.xz`
   - `qtimageformats-everywhere-src-6.12.0.tar.xz`
@@ -74,6 +74,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 
 Sumīre for Windows uses Qt 6.12.0 and PySide6/shiboken6 6.12.0 under the GNU LGPL version 3. The libraries are unmodified files from the PySide6-Essentials and shiboken6 wheels and are stored as separate files in `_internal\PySide6\` and `_internal\shiboken6\` (PySide6's Python modules are inside `sumire.exe`).
 
-- **Source code**: `Sumire-v1.2.1-qt-pyside6-source.zip` is offered next to the distribution ZIP. It contains the official source archives of qtbase, qtsvg, qtimageformats, qttranslations and pyside-setup 6.12.0 from download.qt.io, checked against Qt's published SHA-256 values. `python -m scripts.fetch_qt_sources` downloads and checks the same files. Sumīre's own source (MIT) includes the build scripts and the pinned package versions.
+- **Source code**: `Sumire-v1.3.0-qt-pyside6-source.zip` is offered next to the distribution ZIP. It contains the official source archives of qtbase, qtsvg, qtimageformats, qttranslations and pyside-setup 6.12.0 from download.qt.io, checked against Qt's published SHA-256 values. `python -m scripts.fetch_qt_sources` downloads and checks the same files. Sumīre's own source (MIT) includes the build scripts and the pinned package versions.
 - **Replacing the libraries**: quit Sumīre, replace the `Qt6*.dll` files and plugins in `_internal\PySide6\` (and, for PySide6 itself, the `.pyd` files, `pyside6.abi3.dll` and `_internal\shiboken6\`) with compatible builds (Qt 6.12, MSVC 2022, x64), keeping the names. Then run `sumire.exe --self-test <folder>`; it exits with 0 when every check passes, and `self-test.json` lists the Qt files that were loaded with their SHA-256. To change PySide6's Python modules, rebuild with `scripts\build_windows.ps1` after installing your wheels.
 - **Tested**: replacing Qt6Core, Qt6Gui, Qt6Widgets, Qt6Network and qwindows with Qt's separately distributed official 6.12.0 MSVC 2022 build passed the self-test, and the replaced files were the ones loaded. A self-built, modified Qt has not been tried.

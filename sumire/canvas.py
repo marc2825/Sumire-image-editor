@@ -5,7 +5,7 @@ from .i18n import tr
 import math
 
 from PIL import Image
-from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, QSizeF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QKeyEvent, QMouseEvent, QPainter, QPen, QPixmap, QPolygonF, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
@@ -68,6 +68,8 @@ class Canvas(QWidget):
     zoomChanged = Signal(float)
     filesDropped = Signal(list)
     eraserRequested = Signal()
+    textToolRequested = Signal()
+    textRequested = Signal(QPointF)
     maskToggleRequested = Signal()
     colorPicked = Signal(str)
 
@@ -101,6 +103,8 @@ class Canvas(QWidget):
         self.lasso_loop = self.flash_points = self.flash_token = None
         self.invert_selection = False
         self.last_brush_point = None
+        # (image, top left in image pixels) of the text being typed, drawn over the image.
+        self.text_preview: tuple[QImage, QPointF] | None = None
         self.space_down = False
         self.pan_key = None
         self.bindings = defaults()
@@ -119,6 +123,7 @@ class Canvas(QWidget):
         self.selection_points = []
         self.lasso_loop = self.flash_points = self.flash_token = None
         self.last_brush_point = None
+        self.text_preview = None
         self.effect = None
         self.ready = False
         self.compare = False
@@ -194,6 +199,9 @@ class Canvas(QWidget):
         else:
             self.mask_overlay = region
 
+    def tool_cursor(self):
+        return Qt.CursorShape.IBeamCursor if self.tool.mode == "text" else Qt.CursorShape.CrossCursor
+
     def to_image(self, position: QPointF) -> QPointF:
         return (position - self.offset) / self.scale
 
@@ -248,6 +256,13 @@ class Canvas(QWidget):
         painter.drawImage(QPointF(), self.original if self.compare else self.image)
         if self.show_mask and not self.compare:
             painter.drawImage(QPointF(), self.mask_overlay)
+        if self.text_preview is not None and not self.compare:
+            preview, origin = self.text_preview
+            painter.drawImage(origin, preview)
+            outline = QPen(QColor(TOKENS["accent"]), 1 / self.scale, Qt.PenStyle.DashLine)
+            painter.setPen(outline)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(QRectF(origin, QSizeF(preview.width(), preview.height())))
         painter.restore()
         if self.flash_points:
             # The region the lasso closed, shown for a moment before it is applied.
@@ -279,7 +294,7 @@ class Canvas(QWidget):
                 painter.drawEllipse(rect)
             else:
                 painter.drawRect(rect)
-        elif self.cursor_point and self.shape == "brush" and not self.compare and not self.space_down:
+        elif self.cursor_point and self.shape == "brush" and self.tool.mode != "text" and not self.compare and not self.space_down:
             radius = (self.tool.diameter / 2 + self.tool.expansion) * self.scale
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setPen(QPen(QColor(0, 0, 0, 180), 3))
@@ -309,6 +324,11 @@ class Canvas(QWidget):
                 and self.in_image(point) and self.ready and not self.locked and not self.compare):
             r, g, b, _ = cast(tuple[int, int, int, int], self.document.image.getpixel((int(point.x()), int(point.y()))))
             self.colorPicked.emit(f"#{r:02x}{g:02x}{b:02x}")
+            return
+        if self.tool.mode == "text":
+            if (event.button() == Qt.MouseButton.LeftButton and self.in_image(point) and not self.locked
+                    and not self.compare and not self.stroke):
+                self.textRequested.emit(point)
             return
         if self.shape == "polygon" and self.stroke:
             if event.button() == Qt.MouseButton.LeftButton:
@@ -354,7 +374,7 @@ class Canvas(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent):
         if self.pan_start is not None:
             self.pan_start = None
-            self.setCursor(Qt.CursorShape.OpenHandCursor if self.space_down else Qt.CursorShape.CrossCursor)
+            self.setCursor(Qt.CursorShape.OpenHandCursor if self.space_down else self.tool_cursor())
             return
         if event.button() != Qt.MouseButton.LeftButton or not self.stroke or self.document is None:
             return
@@ -484,6 +504,8 @@ class Canvas(QWidget):
     def keyPressEvent(self, event: QKeyEvent):
         if matches(event, self.bindings["eraser"]):
             self.eraserRequested.emit()
+        elif matches(event, self.bindings["text"]):
+            self.textToolRequested.emit()
         elif matches(event, self.bindings["mask"]):
             self.maskToggleRequested.emit()
         elif matches(event, self.bindings["pan"]):
@@ -500,14 +522,14 @@ class Canvas(QWidget):
         if event.key() == self.pan_key and not event.isAutoRepeat():
             self.space_down = False
             self.pan_key = None
-            self.setCursor(Qt.CursorShape.CrossCursor)
+            self.setCursor(self.tool_cursor())
         else:
             super().keyReleaseEvent(event)
 
     def focusOutEvent(self, event):
         self.space_down = False
         self.pan_key = None
-        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setCursor(self.tool_cursor())
         super().focusOutEvent(event)
 
     def leaveEvent(self, event):

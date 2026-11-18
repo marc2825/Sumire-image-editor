@@ -1,6 +1,6 @@
 # Sumīre — image finishing
 
-[![version](https://img.shields.io/badge/version-1.2.1-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.en.txt)
+[![version](https://img.shields.io/badge/version-1.3.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.en.txt)
 
 [日本語](README.md) · English · [简体中文](README.zh-CN.md)
 
@@ -22,8 +22,9 @@ On the first start, choose whether to overwrite the originals or save to a separ
 ## Features
 
 - Hide with mosaic, blur or fill (brush, rectangle, ellipse, polygon, lasso)
+- Add text (choose the font, size and colour)
 - View, remove and restore metadata (including NovelAI's Stealth PNGInfo and the C2PA added by ChatGPT and others)
-- Sort with Accept / Hold / Reject labels and tags, and into a folder per label
+- Sort with Accept / Hold / Reject labels and tags (tags you use often, such as “Needs fixing”, as buttons), and into a folder per label
 - Tabs, moving between folders, numbered renaming, duplicate removal, side-by-side comparison
 - Format conversion, file size reduction, collages
 - Crop, rotate, colour adjustment, upscaling

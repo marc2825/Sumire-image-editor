@@ -6,7 +6,7 @@ from pathlib import Path
 from time import monotonic
 from PIL import Image
 
-from PySide6.QtCore import QEvent, QSize, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
@@ -19,7 +19,7 @@ from .canvas import Canvas
 from .export import HiddenMetadata, available_target, check_cancel, file_digest, load_verified_export, save_image
 from .imaging import SUPPORTED, Document, ImageProblem, Tool, format_names, load_image, make_effect
 from .library import filename_key, scan_paths
-from .labels import REVIEW_LABELS, ReviewLabels
+from .labels import REVIEW_LABELS, ReviewLabels, quick_tags
 from .novelai import NovelAIImportDialog, ImageAdjustmentDialog, prepare_image
 from .organize import pending_renames, recover_rename
 from .session import Receipts, source_key
@@ -33,7 +33,8 @@ from .app_features import DEFAULT_PRESETS, AppFeatures
 from .batch_features import BatchFeatures
 from .rename_features import RenameFeatures
 from .masks import MaskStore
-from .shortcuts import ShortcutDialog, hint, load_bindings, matches
+from .shortcuts import QUICK_TAG_COMMANDS, ShortcutDialog, hint, load_bindings, matches
+from .text_tool import TextStyle
 from .editor_features import EditorFeatures
 from .output_features import OutputFeatures
 from .folder_features import FolderFeatures
@@ -430,6 +431,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.canvas.colorPicked.connect(self.picked_color)
         self.canvas.zoomChanged.connect(lambda scale: self.zoom_label.show_scale(scale))
         self.canvas.eraserRequested.connect(self.toggle_eraser)
+        self.canvas.textToolRequested.connect(self.toggle_text)
+        self.canvas.textRequested.connect(self.place_text)
         self.canvas.maskToggleRequested.connect(lambda: self.mask_toggle.toggle() if self.mask_toggle.isEnabled() else None)
         self.canvas.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.canvas.customContextMenuRequested.connect(self.show_canvas_menu)
@@ -494,13 +497,24 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.key_hints = getattr(self, "key_hints", {})
         self.key_hints["eraser"] = attach_key_hint(self.erase_button)
         self.mode_buttons.append(("erase", self.erase_button))
+        self.text_button = self._button(tr("テキスト"), self.toggle_text,
+                                        tr("T · 画像をクリックして文字を入れます。フォント・大きさ・色を選べます"))
+        self.text_button.setObjectName("toggle")
+        self.text_button.setIcon(icon("text"))
+        self.text_button.setCheckable(True)
+        self.key_hints["text"] = attach_key_hint(self.text_button)
+        self.mode_buttons.append(("text", self.text_button))
+        # One per row: side by side they would not fit the narrowest panel with their key hints.
         tools.addWidget(self.erase_button)
+        tools.addWidget(self.text_button)
         self.reset_edits_button = self._button(tr("加工・マスクを初期化"), self.reset_edits_action.trigger,
                                                self.reset_edits_action.toolTip())
         tools.addWidget(self.reset_edits_button)
         self.mode = "mosaic"
         self.mode_before_erase = "mosaic"
-        self.mode_strengths = {"mosaic": START_TOOL["strength"], "blur": 20, "fill": 100, "erase": 100}
+        self.mode_before_text = "mosaic"
+        self.mode_strengths = {"mosaic": START_TOOL["strength"], "blur": 20, "fill": 100, "erase": 100, "text": 100}
+        self.text_style = TextStyle()
         self.shape_combo = QComboBox()
         for text, value in [(tr("ブラシ"), "brush"), (tr("長方形"), "rectangle"), (tr("楕円"), "ellipse"), (tr("多角形"), "polygon"), (tr("投げ縄"), "lasso")]:
             self.shape_combo.addItem(text, value)
@@ -625,6 +639,20 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             self.label_buttons[label] = button
             label_row.addWidget(button)
         review.addLayout(label_row)
+        tag_heading = QHBoxLayout()
+        tag_heading.setSpacing(6)
+        tag_heading.addWidget(self._label(tr("オリジナルタグ"), "faint"))
+        tag_heading.addStretch(1)
+        self.quick_tag_edit = tool_button("tag", tr("オリジナルタグの編集 · 追加・名前の変更・削除・並べ替え"), self.edit_quick_tags,
+                                          text=tr("編集"), variant="ghost")
+        tag_heading.addWidget(self.quick_tag_edit)
+        review.addLayout(tag_heading)
+        self.quick_tag_grid = QGridLayout()
+        self.quick_tag_grid.setSpacing(6)
+        review.addLayout(self.quick_tag_grid)
+        self.quick_tag_buttons: list[QPushButton] = []
+        self.quick_tags = quick_tags(self.preferences.data)
+        self.build_quick_tag_buttons()
         self.auto_advance = QCheckBox(tr("ラベルを付けたら次へ"))
         self.auto_advance.setChecked(AUTO_ADVANCE_DEFAULT)
         review.addWidget(self.auto_advance)
@@ -797,6 +825,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             "pending": lambda: self.press_label("pending"),
             "accepted": lambda: self.press_label("accepted"),
             "clear_label": lambda: self.set_review_label(None), "undo_organize": self.undo_organization,
+            **{name: (lambda index=number: self.press_quick_tag(index)) for number, name in enumerate(QUICK_TAG_COMMANDS)},
             "copy_image": self.copy_image, "cut_files": lambda: self.clip_files(cut=True), "paste_image": self.paste_image,
             "fullscreen": self.toggle_fullscreen,
         }
@@ -854,6 +883,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         for label, button in self.label_buttons.items():
             key = self.shortcut_hint(label)
             button.setToolTip((key + " · " if key else "") + tr("複数選択した画像にはまとめて付けます。外すときは「ラベルを解除」。"))
+        self.update_quick_tag_hints()
 
     def action_hint(self, action, name):
         text, key = action.text().split("\t")[0], self.shortcut_hint(name)
@@ -1009,6 +1039,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         for label, button in self.label_buttons.items():
             button.setEnabled(has and idle)
             button.setChecked(label == current_label)
+        self.update_quick_tag_states(has and idle)
         for action in self.label_actions.values():
             action.setEnabled(has and idle)
         visible = self.visible_paths()
@@ -1045,7 +1076,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             button.setEnabled(not blocked)
         self.brush.setEnabled(not blocked and self.shape_combo.currentData() == "brush")
         self.brush_box.setEnabled(self.brush.isEnabled())
-        self.strength.setEnabled(not blocked and self.mode != "erase")
+        self.strength.setEnabled(not blocked and self.mode not in ("erase", "text"))
         self.strength_box.setEnabled(self.strength.isEnabled())
         for widget in (self.weak_button, self.strong_button, self.color_button):
             widget.setEnabled(not blocked and self.mode == "fill")
@@ -1316,7 +1347,12 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.color_button.setVisible(mode == "fill")
         self.fill_row.setVisible(mode == "fill")
         for widget in (self.strength, self.strength_label, self.strength_box):
-            widget.setVisible(mode != "erase")
+            widget.setVisible(mode not in ("erase", "text"))
+        # Text has its own settings (in the dialog that opens on a click); the area tools do not apply.
+        for widget in (self.shape_combo, self.brush, self.brush_label, self.brush_box):
+            widget.setVisible(mode != "text")
+        if mode != "text":
+            self.canvas.text_preview = None
         self.tool_changed()
         self.update_controls()
 
@@ -1326,10 +1362,64 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             self.erase_button.setChecked(self.mode == "erase")
             return
         if self.mode == "erase":
-            self.set_mode(self.mode_before_erase if self.mode_before_erase in ("mosaic", "blur", "fill") else "mosaic")
+            self.set_mode(self.mode_before_erase if self.mode_before_erase in ("mosaic", "blur", "fill", "text") else "mosaic")
         else:
             self.mode_before_erase = self.mode
             self.set_mode("erase")
+
+    def toggle_text(self):
+        """The text button and T switch the text tool on, and back to the previous tool."""
+        if self.busy():
+            self.text_button.setChecked(self.mode == "text")
+            return
+        if self.mode == "text":
+            self.set_mode(self.mode_before_text if self.mode_before_text in ("mosaic", "blur", "fill", "erase") else "mosaic")
+        else:
+            self.mode_before_text = self.mode
+            self.set_mode("text")
+
+    def place_text(self, point):
+        """Ask for the text at ``point`` (shown on the image while typing), then write it as one edit."""
+        document = self.document
+        if document is None or self.busy() or self.saving or self.finalizing or self.canvas.stroke or self.mode != "text":
+            return
+        from .text_tool import TextDialog, render_text, text_stroke
+        dialog = TextDialog(self.text_style, self)
+
+        def preview():
+            text = dialog.value()
+            if not text.strip():
+                self.canvas.text_preview = None
+            else:
+                try:
+                    image, margin = render_text(text, dialog.text_style())
+                except ImageProblem:
+                    self.canvas.text_preview = None
+                else:
+                    self.canvas.text_preview = image, QPointF(round(point.x()) - margin, round(point.y()) - margin)
+            self.canvas.update()
+
+        dialog.changed.connect(preview)
+        try:
+            accepted = self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted)
+        finally:
+            self.canvas.text_preview = None
+            self.canvas.update()
+        self.text_style = dialog.text_style()
+        if not accepted or document is not self.document or self.busy() or self.saving or self.finalizing:
+            return
+        try:
+            stroke = text_stroke(document, dialog.value(), self.text_style, (point.x(), point.y()))
+        except ImageProblem as error:
+            self.error(str(error))
+            return
+        if stroke is None:
+            self.info(tr("入れる文字がありません。"))
+            return
+        self.canvas.ready = False
+        stroke.apply()
+        self.canvas.refresh(stroke.box)
+        self.finish_stroke(stroke)
 
     def adjust_strength(self, direction):
         """Keyboard replacement for the former weaker/stronger buttons."""
@@ -1347,6 +1437,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             box.blockSignals(False)
         if self.mode == "erase":
             self.strength_description.setText(tr("なぞった部分を元画像に戻します。読み込む前に保存した加工は戻せません。"))
+        elif self.mode == "text":
+            self.strength_description.setText(tr("画像をクリックすると、文字を入れる画面が開きます。クリックした位置が文字の左上になります。"))
         elif self.mode == "fill":
             self.strength_label.set_parts(tr("塗りつぶしの不透明度"), "")
             self.strength_box.setSuffix("%")
@@ -1361,12 +1453,15 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             self.strength.setAccessibleName(label)
             tip = ((tr("モザイクの1マスの大きさです。") if self.mode == "mosaic" else tr("ぼかしの半径です。"))
                    + tr("\n{BLUR_NOTE}\n, で弱く / . で強く（2pxずつ）").format(BLUR_NOTE=BLUR_NOTE))
-        if self.mode != "erase":
+        if self.mode not in ("erase", "text"):
             self.strength.setToolTip(tip)
             self.strength_label.setToolTip(tip)
         self.strength_description.setVisible(bool(self.strength_description.text()))
         self.canvas.tool = self.tool()
         self.canvas.shape = self.shape_combo.currentData()
+        if not self.canvas.space_down and self.canvas.pan_start is None and (
+                self.mode == "text" or self.canvas.cursor().shape() == Qt.CursorShape.IBeamCursor):
+            self.canvas.setCursor(self.canvas.tool_cursor())
         self.inverse_action.setEnabled(not self.busy() and not self.saving and self.canvas.shape != "brush")
         self.shape_combo.setToolTip(SHAPE_TIPS[self.canvas.shape]
                                     + (tr("\n囲んだ範囲の外側に適用します。") if self.canvas.invert_selection and self.canvas.shape != "brush" else ""))
@@ -1457,6 +1552,17 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         if self.closing or not self.workspace_active or not self.document or self.busy():
             return
         key = (self.document, self.document.revision, self.tool().effect_key)
+        if self.mode == "text":
+            # Text is drawn when it is placed; there is no effect image to prepare.
+            if self.effect_job:
+                self.effect_job.cancel.set()
+                self.effect_generation += 1
+            self.canvas.effect = None
+            self.prepared_effect_key = key
+            self.canvas.ready = True
+            self.canvas.message = ""
+            self.canvas.update()
+            return
         if self.canvas.effect is not None and self.prepared_effect_key == key:
             self.canvas.ready = True
             self.canvas.message = ""

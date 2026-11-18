@@ -82,6 +82,7 @@ How saving works and what is checked is described in [Saving and privacy](SAVING
 - Blur: the strength is the blur radius.
 - Fill: choose a colour and opacity (0–100%). At 100% the original pixels are replaced completely.
 - Eraser: returns traced areas to the original. Press it again (E) to go back to your tool.
+- Text: writes text into the image. Press it again (T) to go back to your tool (see “Text” below).
 
 ### Choosing the area
 
@@ -99,6 +100,16 @@ How saving works and what is checked is described in [Saving and privacy](SAVING
 - “Mask” (M): tints the edited areas blue (the tint is not saved)
 - “Reset edits and mask”: removes all edits. Ctrl+Z undoes it.
 - Edit presets: save the tool, size, strength, colour, shape and area expansion under a name (in “More settings”).
+
+### Text
+
+Choose “Text” (T) and click the image to open the text window.
+
+- Choose the text (line breaks allowed), font, size (pixels of the original image), colour and bold. While you type, the result is shown on the image.
+- The point you click becomes the top left of the first line.
+- “Add” writes it into the image. Like other edits, it can be undone, erased, shown in the mask and saved.
+- The font, size, colour and bold you chose are used for the next text too.
+- Text cannot be saved as an edit preset.
 
 Edited areas (the mask) are kept in the records and come back when the image is opened again, unless another app changed the image. “⋯ → More → Save edit mask as PNG” exports it as a black-and-white PNG.
 
@@ -127,6 +138,16 @@ Labels are saved at once and survive restarts, renaming and moving. They never c
 - Right-click → “Tags…” adds or removes free-form tags (for several images at once).
 - Tick to add, untick to remove; a half tick leaves them as they are.
 - Tags show on the second line of the list. Find them with “Filter by tag” and the search.
+
+### Custom tags
+
+Tags you use often can be shown as buttons below the labels. The first one is “Needs fixing”.
+
+- Pressing a button adds its tag to the shown (or selected) images; when they all have it, it is removed.
+- The keys 4–9 do the same, from the top (change them in the shortcut settings).
+- “Edit” adds, renames, deletes and reorders them (up to 9). Renaming also renames the same tag on the images in this tab (this can be turned off).
+- Deleting only removes the button; tags already on images stay.
+- “Undo the last organising step” undoes adding and removing. The buttons are the same in every tab.
 
 ### Label folders
 

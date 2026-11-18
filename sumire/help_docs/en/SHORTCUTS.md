@@ -17,8 +17,10 @@ These are the default keys. Change them in “Settings (gear) → Shortcuts” a
 | Search names, notes and tags | Ctrl+F |
 | Accept / Hold / Reject | 1 / 2 / 3 |
 | Remove label | Alt+0 |
+| Add or remove custom tags 1–6 | 4–9 |
 | Undo the last organising step | Ctrl+Alt+Z |
 | Toggle the eraser | E |
+| Toggle the text tool | T |
 | Show the mask | M |
 | Compare with the original | Tab (while held) |
 | Zoom in / out | Wheel / + / −. You can also type a number into the zoom box at the bottom right and press Enter |

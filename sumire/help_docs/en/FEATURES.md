@@ -26,6 +26,7 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | What you want | Where |
 | --- | --- |
 | Hide part of an image | Mosaic, Blur or Fill in the right panel. Areas: Brush, Rectangle, Ellipse, Polygon, Lasso |
+| Add text | Choose “Text” (T) in the right panel and click the image. Font, size, colour and bold can be chosen |
 | Undo edits | Undo / Redo, the Eraser, “Reset edits and mask” |
 | See what was edited | “Mask” below the image. It can also be saved as a black-and-white PNG (“⋯ → More”) |
 | Compare with the original | Hold “Compare” below the image, or hold Tab |
@@ -43,6 +44,7 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | --- | --- |
 | Label images | “Accept”, “Hold”, “Reject” at the bottom right, or the 1, 2, 3 keys. Applies to every selected image |
 | Tag images | Right-click → “Tags…” (several images at once) |
+| Tag with a button | “Custom tags” at the bottom right (“Needs fixing” at first; keys 4–9). “Edit” adds, renames, deletes and reorders them |
 | Sort into label folders | “Export by label” above the list (moves into a folder per label; can also copy, and renumber) |
 | Sort as you label | Right-click → “Label → Sort into label folders automatically” (where Accept / Hold / Reject folders exist) |
 | Gather label folders | The list's “⋯ → Gather the label folders…” |

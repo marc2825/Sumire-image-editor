@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 from . import DISPLAY_VERSION
 from .export import check_cancel, file_digest
-from .labels import ReviewLabels
+from .labels import ReviewLabels, quick_tags
 from .projects import PROJECT_EXTENSIONS, read_project, write_project
 from .session import Receipts
 from .storage import delete_records, migrate_records, record_path
@@ -155,7 +155,7 @@ class AppFeatures:
             self.error(tr("処理中は設定を戻せません。完了してから、もう一度お試しください。"))
             return False
         data = dict(self.preferences.data)
-        for key in ("shortcuts", "presets", "preset_defaults", "hide_overwrite_notice", "hide_quit_confirmation"):
+        for key in ("shortcuts", "presets", "preset_defaults", "hide_overwrite_notice", "hide_quit_confirmation", "quick_tags"):
             data.pop(key, None)
         data["settings"] = dict(self.default_settings)
         try:
@@ -166,6 +166,8 @@ class AppFeatures:
         for page in pages:
             page.restore_settings(page.default_settings)
             page.show_presets(dict(DEFAULT_PRESETS))
+            page.quick_tags = quick_tags(data)
+            page.build_quick_tag_buttons()
         if host is not None:
             host.apply_shortcuts()
         else:
@@ -226,6 +228,9 @@ class AppFeatures:
 
     def save_preset(self):
         if self.busy() or self.saving:
+            return
+        if self.mode == "text":
+            self.error(tr("テキストは編集プリセットに登録できません。ほかのツールを選んでから登録してください。"))
             return
         name, accepted = QInputDialog.getText(self, tr("編集プリセットを登録"), tr("名前（60文字以内）"), text=self.preset_combo.currentData() or "")
         name = name.strip()
