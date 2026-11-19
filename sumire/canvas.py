@@ -3,9 +3,10 @@ from typing import cast
 from .i18n import tr
 
 import math
+from dataclasses import replace
 
 from PIL import Image
-from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, QSizeF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QKeyEvent, QMouseEvent, QPainter, QPen, QPixmap, QPolygonF, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
@@ -70,6 +71,10 @@ class Canvas(QWidget):
     eraserRequested = Signal()
     textToolRequested = Signal()
     textRequested = Signal(QPointF)
+    textTransformed = Signal(object)  # the new TextPlacement after a drag on the box
+    textEditRequested = Signal()
+    textDeleteRequested = Signal()
+    textDeselected = Signal()
     maskToggleRequested = Signal()
     colorPicked = Signal(str)
 
@@ -104,7 +109,12 @@ class Canvas(QWidget):
         self.invert_selection = False
         self.last_brush_point = None
         # (image, top left in image pixels) of the text being typed, drawn over the image.
-        self.text_preview: tuple[QImage, QPointF] | None = None
+        self.text_preview: tuple[QImage, QRectF] | None = None
+        # Pixels without the text being edited (image, top left), drawn under its preview.
+        self.text_under: tuple[QImage, QPointF] | None = None
+        # The text that can be edited (a TextState): its box and handles are drawn and dragged.
+        self.text_box = None
+        self.text_drag: dict | None = None
         self.space_down = False
         self.pan_key = None
         self.bindings = defaults()
@@ -124,6 +134,9 @@ class Canvas(QWidget):
         self.lasso_loop = self.flash_points = self.flash_token = None
         self.last_brush_point = None
         self.text_preview = None
+        self.text_under = None
+        self.text_box = None
+        self.text_drag = None
         self.effect = None
         self.ready = False
         self.compare = False
@@ -199,6 +212,119 @@ class Canvas(QWidget):
         else:
             self.mask_overlay = region
 
+    # --- the text box: handles, hit test, dragging -----------------------------------------------
+
+    HANDLE = 5  # half the size of a corner handle, in screen pixels
+    ROTATE_OFFSET = 26  # the rotation handle's distance above the top edge, in screen pixels
+
+    def to_screen(self, point: QPointF) -> QPointF:
+        return point * self.scale + self.offset
+
+    def text_handles(self, placement=None):
+        """Screen positions: the four corners, the middle of the top edge and the rotation handle."""
+        corners = [self.to_screen(point) for point in (placement or self.text_box.placement).corners()]
+        top = (corners[0] + corners[1]) / 2
+        edge = corners[1] - corners[0]
+        length = math.hypot(edge.x(), edge.y()) or 1.0
+        normal = QPointF(edge.y() / length, -edge.x() / length)  # pointing away from the block, above it
+        return corners, top, top + normal * self.ROTATE_OFFSET
+
+    def text_hit(self, position: QPointF):
+        """What a screen point is on: "rotate", "corner0"…"corner3", "move" (inside) or None."""
+        if self.text_box is None:
+            return None
+        corners, _, rotate = self.text_handles()
+        reach = self.HANDLE + 4
+        if math.hypot(position.x() - rotate.x(), position.y() - rotate.y()) <= reach + 2:
+            return "rotate"
+        for number, corner in enumerate(corners):
+            if abs(position.x() - corner.x()) <= reach and abs(position.y() - corner.y()) <= reach:
+                return f"corner{number}"
+        placement = self.text_box.placement
+        local = placement.to_block(self.to_image(position))
+        width, height = placement.size()
+        slack = 4 / self.scale
+        return "move" if -slack <= local.x() <= width + slack and -slack <= local.y() <= height + slack else None
+
+    def start_text_drag(self, hit, point: QPointF):
+        state = self.text_box
+        self.text_drag = {"hit": hit, "start": point, "placement": None, "origin": state.placement}
+        under = qimage(state.under)
+        self.text_under = under, QPointF(state.box[0], state.box[1])
+        self.drag_text(point, False)
+
+    def drag_text(self, point: QPointF, snap: bool):
+        """The placement for the pointer at ``point`` (image coordinates), shown as a preview."""
+        from .text_tool import MAX_SIZE, MIN_SIZE
+        drag = self.text_drag
+        if drag is None:
+            return
+        origin = drag["origin"]
+        hit, start = drag["hit"], drag["start"]
+        cx, cy = origin.center
+        if hit == "move":
+            placement = replace(origin, center=(cx + point.x() - start.x(), cy + point.y() - start.y()))
+        elif hit == "rotate":
+            turned = math.degrees(math.atan2(point.y() - cy, point.x() - cx) - math.atan2(start.y() - cy, start.x() - cx))
+            angle = (origin.angle + turned) % 360
+            if snap:
+                angle = round(angle / 15) * 15 % 360
+            placement = replace(origin, angle=angle)
+        else:
+            # A corner: scale about the opposite corner, which stays where it is.
+            number = int(hit[-1])
+            corners = origin.corners()
+            fixed, grabbed = corners[(number + 2) % 4], corners[number]
+            diagonal = grabbed - fixed
+            length = math.hypot(diagonal.x(), diagonal.y()) or 1.0
+            reach = ((point.x() - fixed.x()) * diagonal.x() + (point.y() - fixed.y()) * diagonal.y()) / length
+            size = max(MIN_SIZE, min(MAX_SIZE, round(origin.style.size * max(0.01, reach / length))))
+            style = replace(origin.style, size=size)
+            resized = replace(origin, style=style)
+            # Put the new block so that its fixed corner is where the old one was.
+            moved = resized.corners()[(number + 2) % 4]
+            placement = replace(resized, center=(resized.center[0] + fixed.x() - moved.x(), resized.center[1] + fixed.y() - moved.y()))
+        drag["placement"] = placement
+        self.show_text_preview(placement)
+
+    def show_text_preview(self, placement):
+        """Draw ``placement`` over the image at about the screen's resolution (cheap while dragging or typing)."""
+        from .imaging import ImageProblem
+        from .text_tool import render_placed
+        if self.document is None:
+            return
+        resolution = min(1.0, self.scale * max(1.0, self.devicePixelRatioF()))
+        try:
+            self.text_preview = render_placed(placement, self.document.image.size, resolution)
+        except ImageProblem:
+            self.text_preview = None
+        self.update()
+
+    def clear_text_preview(self):
+        self.text_preview = None
+        self.text_under = None
+        self.update()
+
+    def paint_text_box(self, painter: QPainter):
+        if self.text_box is None or self.tool.mode != "text":
+            return
+        dragged = self.text_drag.get("placement") if self.text_drag is not None else None
+        corners, top, rotate = self.text_handles(dragged or self.text_box.placement)
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        accent = QColor(TOKENS["accent"])
+        for color, width in ((QColor(0, 0, 0, 150), 3), (accent, 1.4)):
+            painter.setPen(QPen(color, width))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPolygon(QPolygonF(corners))
+            painter.drawLine(top, rotate)
+        painter.setPen(QPen(accent, 1.4))
+        painter.setBrush(QColor("#ffffff"))
+        for corner in corners:
+            painter.drawRect(QRectF(corner.x() - self.HANDLE, corner.y() - self.HANDLE, 2 * self.HANDLE, 2 * self.HANDLE))
+        painter.drawEllipse(rotate, self.HANDLE + 1, self.HANDLE + 1)
+        painter.restore()
+
     def tool_cursor(self):
         return Qt.CursorShape.IBeamCursor if self.tool.mode == "text" else Qt.CursorShape.CrossCursor
 
@@ -256,14 +382,16 @@ class Canvas(QWidget):
         painter.drawImage(QPointF(), self.original if self.compare else self.image)
         if self.show_mask and not self.compare:
             painter.drawImage(QPointF(), self.mask_overlay)
-        if self.text_preview is not None and not self.compare:
-            preview, origin = self.text_preview
-            painter.drawImage(origin, preview)
-            outline = QPen(QColor(TOKENS["accent"]), 1 / self.scale, Qt.PenStyle.DashLine)
-            painter.setPen(outline)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(QRectF(origin, QSizeF(preview.width(), preview.height())))
+        if not self.compare:
+            if self.text_under is not None:
+                under, origin = self.text_under
+                painter.drawImage(origin, under)
+            if self.text_preview is not None:
+                preview, target = self.text_preview
+                painter.drawImage(target, preview)
         painter.restore()
+        if not self.compare:
+            self.paint_text_box(painter)
         if self.flash_points:
             # The region the lasso closed, shown for a moment before it is applied.
             painter.setPen(QPen(QColor("#ffd166"), 2.5))
@@ -326,8 +454,18 @@ class Canvas(QWidget):
             self.colorPicked.emit(f"#{r:02x}{g:02x}{b:02x}")
             return
         if self.tool.mode == "text":
-            if (event.button() == Qt.MouseButton.LeftButton and self.in_image(point) and not self.locked
-                    and not self.compare and not self.stroke):
+            if event.button() != Qt.MouseButton.LeftButton or self.locked or self.compare or self.stroke:
+                return
+            if self.text_box is not None:
+                hit = self.text_hit(pos)
+                if hit is not None:
+                    self.start_text_drag(hit, point)
+                else:  # a click beside the text finishes editing it; the next click adds a new text
+                    self.text_box = None
+                    self.textDeselected.emit()
+                    self.update()
+                return
+            if self.in_image(point):
                 self.textRequested.emit(point)
             return
         if self.shape == "polygon" and self.stroke:
@@ -357,6 +495,13 @@ class Canvas(QWidget):
             self.offset += pos - self.pan_start
             self.pan_start = pos
             self.fitted = False
+        elif self.text_drag is not None:
+            self.drag_text(self.to_image(pos), bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier))
+        elif self.tool.mode == "text" and self.text_box is not None and not self.space_down:
+            hit = self.text_hit(pos)
+            self.setCursor({"move": Qt.CursorShape.SizeAllCursor, "rotate": Qt.CursorShape.PointingHandCursor,
+                            None: self.tool_cursor()}.get(hit, Qt.CursorShape.SizeFDiagCursor if hit in ("corner0", "corner2")
+                                                          else Qt.CursorShape.SizeBDiagCursor))
         elif self.stroke and self.shape == "lasso" and self.flash_points is None:
             point = self.clipped_point(self.to_image(pos))
             if point != self.selection_points[-1]:
@@ -375,6 +520,14 @@ class Canvas(QWidget):
         if self.pan_start is not None:
             self.pan_start = None
             self.setCursor(Qt.CursorShape.OpenHandCursor if self.space_down else self.tool_cursor())
+            return
+        if self.text_drag is not None and event.button() == Qt.MouseButton.LeftButton:
+            drag, self.text_drag = self.text_drag, None
+            placement = drag.get("placement")
+            if placement is not None and placement != self.text_box.placement:
+                self.textTransformed.emit(placement)  # the window writes it, then clears the preview
+            else:
+                self.clear_text_preview()
             return
         if event.button() != Qt.MouseButton.LeftButton or not self.stroke or self.document is None:
             return
@@ -459,6 +612,11 @@ class Canvas(QWidget):
         self.strokeFinished.emit(stroke)
 
     def mouseDoubleClickEvent(self, event):
+        if (self.tool.mode == "text" and self.text_box is not None and event.button() == Qt.MouseButton.LeftButton
+                and not self.locked and self.text_hit(event.position()) == "move"):
+            self.text_drag = None
+            self.textEditRequested.emit()
+            return
         if self.shape == "polygon" and self.stroke and event.button() == Qt.MouseButton.LeftButton:
             self.selection_points.append(self.clipped_point(self.to_image(event.position())))
             self.finish_selection()
@@ -466,6 +624,15 @@ class Canvas(QWidget):
             super().mouseDoubleClickEvent(event)
 
     def cancel_stroke(self):
+        if self.text_drag is not None:
+            self.text_drag = None
+            self.clear_text_preview()
+            return
+        if self.text_box is not None and not self.stroke:
+            self.text_box = None
+            self.textDeselected.emit()
+            self.update()
+            return
         if self.stroke:
             self.stroke.cancel()
             self.stroke = None
@@ -515,6 +682,9 @@ class Canvas(QWidget):
                 self.setCursor(Qt.CursorShape.OpenHandCursor)
         elif matches(event, self.bindings["cancel_stroke"]):
             self.cancel_stroke()
+        elif (event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace) and self.tool.mode == "text"
+              and self.text_box is not None and self.text_drag is None and not self.locked):
+            self.textDeleteRequested.emit()
         else:
             super().keyPressEvent(event)
 

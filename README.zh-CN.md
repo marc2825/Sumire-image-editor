@@ -1,6 +1,6 @@
 # Sumīre — 图像修整
 
-[![version](https://img.shields.io/badge/version-1.3.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.zh-CN.txt)
+[![version](https://img.shields.io/badge/version-1.4.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.zh-CN.txt)
 
 [日本語](README.md) · [English](README.en.md) · 简体中文
 
@@ -22,7 +22,7 @@ Sumīre 是一款适用于 Windows 11 的应用，可以用马赛克或模糊隐
 ## 功能
 
 - 用马赛克、模糊、填充隐藏（画笔、矩形、椭圆、多边形、套索）
-- 添加文字（可选择字体、大小和颜色）
+- 添加文字（可选择字体、大小和颜色；添加后也可移动、旋转、缩放和重写）
 - 查看、删除、恢复元数据（也支持 NovelAI 的 Stealth PNGInfo 和 ChatGPT 等添加的 C2PA）
 - 用采用、待定、不采用标签和标记分拣（“需修正”等常用标记可用按钮添加），按标签分入文件夹
 - 工作标签页、文件夹间移动、编号重命名、删除重复、多张比较

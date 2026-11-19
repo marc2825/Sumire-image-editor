@@ -1,5 +1,6 @@
 """Application window with independent, explicitly opened workspaces."""
 from .i18n import tr
+from .labels import quick_tags
 from collections import OrderedDict, deque
 from pathlib import Path
 
@@ -187,6 +188,8 @@ class WorkspaceWindow(QMainWindow):
         chosen = dialog.exec() == QDialog.DialogCode.Accepted and dialog.save_mode() is not None
         data = dict(self.preferences.data)
         data.setdefault("storage", "app")
+        # The tag buttons are saved now, in the language of the first start (issue #3).
+        data.setdefault("quick_tags", quick_tags({}))
         settings = data.get("settings", {})
         settings = settings if isinstance(settings, dict) else {}
         # Closing without a choice must not lead to replacing originals: save to a separate folder.

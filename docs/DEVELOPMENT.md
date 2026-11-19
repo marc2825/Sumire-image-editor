@@ -69,7 +69,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 - Linux上のPythonからWindows版は作れません。
 - コード署名、インストーラー、自動更新はありません。
 
-画面・説明書・ZIP の名前に使う版（`sumire.DISPLAY_VERSION`）と、pyproject.toml・`sumire.__version__` は同じ `1.3.0` です（1.00.0 だけは表示が2桁、パッケージは PEP 440 の形の 1.0.0）。exe のバージョン情報は、数値が 1.3.0.0、文字列が `1.3.0` です。
+画面・説明書・ZIP の名前に使う版（`sumire.DISPLAY_VERSION`）と、pyproject.toml・`sumire.__version__` は同じ `1.4.0` です（1.00.0 だけは表示が2桁、パッケージは PEP 440 の形の 1.0.0）。exe のバージョン情報は、数値が 1.4.0.0、文字列が `1.4.0` です。
 
 ### Qt・PySide6 のソースとライセンス文
 
@@ -90,13 +90,13 @@ Qt 6.12.0（qtbase・qtsvg・qtimageformats・qttranslations）と pyside-setup 
 - `--replace-qt` に Qt 6.12（MSVC 2022 x64）の公式ビルドのフォルダーを渡すと、Qt の DLL を置き換えて自己検査をやり直し、置き換えた DLL が読み込まれたことも確かめます。
 
 ```powershell
-python -m scripts.verify_distribution dist\Sumire-v1.3.0-win64.zip --report test-artifacts\distribution.json
+python -m scripts.verify_distribution dist\Sumire-v1.4.0-win64.zip --report test-artifacts\distribution.json
 ```
 
 配布物の exe だけで確かめるときは、自己検査を直接実行します。設定・記録・一時ファイルは指定したフォルダーの中だけに作り、右クリックメニューは登録しません。
 
 ```powershell
-.\dist\Sumire-v1.3.0-win64\sumire.exe --self-test "$env:TEMP\sumire-self-test"
+.\dist\Sumire-v1.4.0-win64\sumire.exe --self-test "$env:TEMP\sumire-self-test"
 ```
 
 自己検査で確かめること：
@@ -113,7 +113,7 @@ python -m scripts.verify_distribution dist\Sumire-v1.3.0-win64.zip --report test
 実際のマウス・キーボード操作で確かめるときは、Windowsの検証用Pythonに `Pillow pywinauto psutil pywin32` を入れて次を実行します。マウスとキーボードを自動で動かすため、終わるまでPCを操作しないでください。
 
 ```powershell
-python -m scripts.smoke_windows_exe dist\Sumire-v1.3.0-win64 --artifacts test-artifacts\windows-exe --shell-verbs
+python -m scripts.smoke_windows_exe dist\Sumire-v1.4.0-win64 --artifacts test-artifacts\windows-exe --shell-verbs
 ```
 
 `--artifacts` には新しいフォルダーを指定します。`--shell-verbs` を付けると、右クリックの登録と、そこからの起動も確かめます（終わったら元に戻します）。
@@ -179,7 +179,7 @@ python -m scripts.export_public --audit --destination .
 - `novelai.py`：NovelAIへ渡す画像の用意
 - `onboarding.py`：初回の保存方法の選択
 - `settings_dialog.py`、`preferences.py`、`shortcuts.py`、`tag_dialog.py`：設定とタグ（オリジナルタグを含む）の画面
-- `text_tool.py`：テキストの描画と入力画面
+- `text_tool.py`：テキストの配置・描画・書き換え（1回の編集として置き換える）と入力画面
 - `app_features.py`：編集プロジェクト・プリセット・管理記録の設定・ヘルプの呼び出し
 - `instance.py`、`explorer.py`：多重起動の防止と起動中の画面への受け渡し、Windowsの右クリックへの登録
 - `help.py`、`help_docs/`：同梱のヘルプ（言語ごとのフォルダー）

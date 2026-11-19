@@ -3,13 +3,13 @@
 Run on Windows with the Python environment that made the build (build_windows.ps1
 does both). The result:
 
-    dist/Sumire-v1.3.0-win64/            the folder users get
+    dist/Sumire-v1.4.0-win64/            the folder users get
         sumire.exe, _internal/            program, Python, Qt (replaceable DLLs), fonts
         README-Windows*.txt, LICENSE, THIRD_PARTY_NOTICES.md, QT_REPLACEMENT.md, ...
         licenses/                         licence texts of everything bundled
         SHA256SUMS.txt                    checksums of the files above (not of the ZIP)
-    dist/Sumire-v1.3.0-win64.zip
-    dist/Sumire-v1.3.0-win64.zip.sha256  checksum of the ZIP, kept outside it
+    dist/Sumire-v1.4.0-win64.zip
+    dist/Sumire-v1.4.0-win64.zip.sha256  checksum of the ZIP, kept outside it
 """
 from __future__ import annotations
 

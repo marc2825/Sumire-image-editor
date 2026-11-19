@@ -107,9 +107,20 @@ Choose “Text” (T) and click the image to open the text window.
 
 - Choose the text (line breaks allowed), font, size (pixels of the original image), colour and bold. While you type, the result is shown on the image.
 - The point you click becomes the top left of the first line.
-- “Add” writes it into the image. Like other edits, it can be undone, erased, shown in the mask and saved.
+- “Add” writes it into the image. Like other edits, it can be erased, shown in the mask and saved.
 - The font, size, colour and bold you chose are used for the next text too.
 - Text cannot be saved as an edit preset.
+
+The text gets a box. While the text tool is chosen:
+
+- Drag inside the box: move
+- Drag a corner: resize (the opposite corner stays where it is)
+- Drag the circle above: rotate (in 15° steps with Shift)
+- Double-click the box: rewrite (add to the text, change the font, size or colour; the top left stays)
+- Delete: remove
+- Click beside the box, or Esc: let go of it (the next click adds a new text)
+
+Each of these is written into the image at once, and Undo goes back one step at a time, with the box where the text was. After another edit, that text can no longer be edited through its box (Undo back to it, and it can be again).
 
 Edited areas (the mask) are kept in the records and come back when the image is opened again, unless another app changed the image. “⋯ → More → Save edit mask as PNG” exports it as a black-and-white PNG.
 
@@ -141,7 +152,7 @@ Labels are saved at once and survive restarts, renaming and moving. They never c
 
 ### Custom tags
 
-Tags you use often can be shown as buttons below the labels. The first one is “Needs fixing”.
+Tags you use often can be shown as buttons in “Custom tags” in the sorting area. The first one is “Needs fixing”. It sits above the Accept / Hold / Reject labels; press its heading to open or close it (it starts closed).
 
 - Pressing a button adds its tag to the shown (or selected) images; when they all have it, it is removed.
 - The keys 4–9 do the same, from the top (change them in the shortcut settings).

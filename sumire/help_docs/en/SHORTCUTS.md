@@ -44,6 +44,8 @@ These are the default keys. Change them in “Settings (gear) → Shortcuts” a
 | Add a polygon point / finish | Click / Enter or double-click |
 | Remove the last point / cancel | Backspace / Esc |
 | Confirm / cancel a name | Enter / Esc |
+| Rewrite / remove a text | Double-click its box / Delete |
+| Rotate a text in 15° steps | Shift + drag the rotation circle |
 
 “Undo” only undoes edits to the image. Labels, tags, order, names, notes and folder moves are undone with “Undo the last organising step”.
 

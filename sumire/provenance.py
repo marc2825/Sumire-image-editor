@@ -480,7 +480,9 @@ def _box_bytes(children, depth=0):
 def has_thumbnail(store):
     """Whether any manifest holds a picture that may copy an image: a thumbnail, or image data embedded
     in any other assertion (an ingredient, embedded data). The issuer's icon does not count. An
-    unreadable store counts as yes."""
+    unreadable store counts as yes; no store (None) holds nothing (issue #4)."""
+    if store is None:
+        return False
     try:
         label, manifests = _superbox(next(_boxes(store))[1])
         if label != "c2pa":

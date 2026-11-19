@@ -81,6 +81,15 @@ def validate_opened(image):
         raise ImageProblem(tr("画像が大きすぎます。上限は2,400万画素・1辺32,768pxです。"))
 
 
+def eight_bit(image):
+    """16-bit greyscale scaled to 8 bits (a plain conversion would clip everything above 255 to white)."""
+    if image.mode in {"I;16", "I;16L", "I;16B", "I;16N"}:
+        image = image.convert("I")
+    if image.mode == "I":
+        return image.point(lambda value: value / 256).convert("L")
+    return image
+
+
 def srgb_pixels(image):
     profile = image.info.get("icc_profile")
     if not profile:
@@ -111,7 +120,7 @@ def load_image(path: Path, found: list | None = None) -> Image.Image:
                     found.extend(categories(opened, path))
                 # Stealth data follows the encoded pixel order, so remove it
                 # before Orientation/ICC transforms or any editing can hide its header.
-                image = ImageOps.exif_transpose(remove_stealth(opened))
+                image = ImageOps.exif_transpose(remove_stealth(eight_bit(opened)))
                 pixels = clean_pixels(srgb_pixels(image))
                 pixels.format = opened.format
                 return pixels
@@ -137,7 +146,7 @@ def load_thumbnail(path: Path, size=(256, 256)) -> Image.Image:
                 if opened.format == "JPEG":
                     opened.draft("RGB", (max(size), max(size)))
                 opened.load()
-                image = remove_stealth(opened)
+                image = remove_stealth(eight_bit(opened))
                 image = ImageOps.exif_transpose(image)
                 # Convert tagged colour before resampling to preserve appearance.
                 image = srgb_pixels(image)
@@ -173,7 +182,10 @@ class Tool:
 
 def make_effect(image: Image.Image, tool: Tool) -> Image.Image:
     if tool.mode == "fill":
-        fill = Image.new("RGBA", image.size, tool.color)
+        try:
+            fill = Image.new("RGBA", image.size, tool.color)
+        except ValueError:  # the colour picker never gives one; keep other callers on ImageProblem (issue #4)
+            raise ImageProblem(tr("塗りつぶしの色が正しくありません。")) from None
         opacity = max(0, min(100, tool.opacity))
         if opacity == 100:
             return fill

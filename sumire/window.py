@@ -2,6 +2,7 @@ from __future__ import annotations
 from .i18n import LANGUAGES, language, switch_note, tr
 
 from collections import OrderedDict
+import weakref
 from pathlib import Path
 from time import monotonic
 from PIL import Image
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QSplitter, QStackedWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
-from .canvas import Canvas
+from .canvas import Canvas, qimage
 from .export import HiddenMetadata, available_target, check_cancel, file_digest, load_verified_export, save_image
 from .imaging import SUPPORTED, Document, ImageProblem, Tool, format_names, load_image, make_effect
 from .library import filename_key, scan_paths
@@ -433,6 +434,10 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.canvas.eraserRequested.connect(self.toggle_eraser)
         self.canvas.textToolRequested.connect(self.toggle_text)
         self.canvas.textRequested.connect(self.place_text)
+        self.canvas.textEditRequested.connect(self.edit_text)
+        self.canvas.textTransformed.connect(self.transform_text)
+        self.canvas.textDeleteRequested.connect(self.delete_text)
+        self.canvas.textDeselected.connect(self.deselect_text)
         self.canvas.maskToggleRequested.connect(lambda: self.mask_toggle.toggle() if self.mask_toggle.isEnabled() else None)
         self.canvas.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.canvas.customContextMenuRequested.connect(self.show_canvas_menu)
@@ -515,6 +520,10 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.mode_before_text = "mosaic"
         self.mode_strengths = {"mosaic": START_TOOL["strength"], "blur": 20, "fill": 100, "erase": 100, "text": 100}
         self.text_style = TextStyle()
+        self.text_document = None
+        # Per image (while it stays open in this tab): {revision: TextState}.
+        self.text_store: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+        self.text_selected = False
         self.shape_combo = QComboBox()
         for text, value in [(tr("ブラシ"), "brush"), (tr("長方形"), "rectangle"), (tr("楕円"), "ellipse"), (tr("多角形"), "polygon"), (tr("投げ縄"), "lasso")]:
             self.shape_combo.addItem(text, value)
@@ -618,6 +627,28 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         review = QVBoxLayout(footer)
         review.setContentsMargins(16, 12, 16, 14)
         review.setSpacing(8)
+        # オリジナルタグ first, folded by default; the labels stay at the very bottom.
+        tag_heading = QHBoxLayout()
+        tag_heading.setSpacing(6)
+        self.quick_tag_toggle = self._disclosure(tr("オリジナルタグ"))
+        self.quick_tag_toggle.setToolTip(tr("よく使うタグのボタンを表示します。"))
+        self.quick_tag_toggle.toggled.connect(self.show_quick_tags)
+        tag_heading.addWidget(self.quick_tag_toggle)
+        tag_heading.addStretch(1)
+        self.quick_tag_edit = tool_button("tag", tr("オリジナルタグの編集 · 追加・名前の変更・削除・並べ替え"), self.edit_quick_tags,
+                                          text=tr("編集"), variant="ghost")
+        tag_heading.addWidget(self.quick_tag_edit)
+        review.addLayout(tag_heading)
+        self.quick_tag_panel = QWidget()
+        self.quick_tag_grid = QGridLayout(self.quick_tag_panel)
+        self.quick_tag_grid.setContentsMargins(0, 0, 0, 4)
+        self.quick_tag_grid.setSpacing(6)
+        self.quick_tag_panel.hide()
+        review.addWidget(self.quick_tag_panel)
+        self.quick_tag_buttons: list[QPushButton] = []
+        self.quick_tags = quick_tags(self.preferences.data)
+        self.build_quick_tag_buttons()
+        review.addWidget(divider())
         heading = QHBoxLayout()
         heading.addWidget(section_label(tr("仕分け")))
         heading.addStretch(1)
@@ -627,6 +658,9 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.review_hint.setObjectName("faint")
         heading.addWidget(self.review_hint)
         review.addLayout(heading)
+        self.auto_advance = QCheckBox(tr("ラベルを付けたら次へ"))
+        self.auto_advance.setChecked(AUTO_ADVANCE_DEFAULT)
+        review.addWidget(self.auto_advance)
         label_row = QHBoxLayout()
         label_row.setSpacing(6)
         self.label_buttons = {}
@@ -639,23 +673,6 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             self.label_buttons[label] = button
             label_row.addWidget(button)
         review.addLayout(label_row)
-        tag_heading = QHBoxLayout()
-        tag_heading.setSpacing(6)
-        tag_heading.addWidget(self._label(tr("オリジナルタグ"), "faint"))
-        tag_heading.addStretch(1)
-        self.quick_tag_edit = tool_button("tag", tr("オリジナルタグの編集 · 追加・名前の変更・削除・並べ替え"), self.edit_quick_tags,
-                                          text=tr("編集"), variant="ghost")
-        tag_heading.addWidget(self.quick_tag_edit)
-        review.addLayout(tag_heading)
-        self.quick_tag_grid = QGridLayout()
-        self.quick_tag_grid.setSpacing(6)
-        review.addLayout(self.quick_tag_grid)
-        self.quick_tag_buttons: list[QPushButton] = []
-        self.quick_tags = quick_tags(self.preferences.data)
-        self.build_quick_tag_buttons()
-        self.auto_advance = QCheckBox(tr("ラベルを付けたら次へ"))
-        self.auto_advance.setChecked(AUTO_ADVANCE_DEFAULT)
-        review.addWidget(self.auto_advance)
         outer.addWidget(footer)
         return container
 
@@ -797,6 +814,10 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
     def show_details(self, show):
         self.tool_details.setVisible(show)
         self.details_toggle.setIcon(icon("chevron_down" if show else "chevron_right", "text_muted"))
+
+    def show_quick_tags(self, show):
+        self.quick_tag_panel.setVisible(show)
+        self.quick_tag_toggle.setIcon(icon("chevron_down" if show else "chevron_right", "text_muted"))
 
 
     def _shortcuts(self):
@@ -1040,6 +1061,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             button.setEnabled(has and idle)
             button.setChecked(label == current_label)
         self.update_quick_tag_states(has and idle)
+        self.sync_text_box()
         for action in self.label_actions.values():
             action.setEnabled(has and idle)
         visible = self.visible_paths()
@@ -1352,7 +1374,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         for widget in (self.shape_combo, self.brush, self.brush_label, self.brush_box):
             widget.setVisible(mode != "text")
         if mode != "text":
-            self.canvas.text_preview = None
+            self.canvas.text_drag = None
+            self.canvas.clear_text_preview()
         self.tool_changed()
         self.update_controls()
 
@@ -1378,48 +1401,151 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             self.mode_before_text = self.mode
             self.set_mode("text")
 
-    def place_text(self, point):
-        """Ask for the text at ``point`` (shown on the image while typing), then write it as one edit."""
-        document = self.document
-        if document is None or self.busy() or self.saving or self.finalizing or self.canvas.stroke or self.mode != "text":
-            return
-        from .text_tool import TextDialog, render_text, text_stroke
-        dialog = TextDialog(self.text_style, self)
+    # --- text: placed, then moved, resized, rotated and rewritten through its box ----------------
 
-        def preview():
-            text = dialog.value()
-            if not text.strip():
-                self.canvas.text_preview = None
-            else:
-                try:
-                    image, margin = render_text(text, dialog.text_style())
-                except ImageProblem:
-                    self.canvas.text_preview = None
-                else:
-                    self.canvas.text_preview = image, QPointF(round(point.x()) - margin, round(point.y()) - margin)
+    MAX_TEXT_STATES = 60
+
+    def current_text_state(self):
+        """The text that the shown image's pixels hold right now (by revision), if any."""
+        if self.document is None:
+            return None
+        return self.text_store.get(self.document, {}).get(self.document.revision)
+
+    def sync_text_box(self):
+        if self.document is not self.text_document:
+            self.text_document = self.document
+            self.text_selected = False
+        state = self.current_text_state() if self.mode == "text" and self.text_selected else None
+        if self.canvas.text_box is not state:
+            self.canvas.text_box = state
+            if self.canvas.text_drag is not None and state is None:
+                self.canvas.text_drag = None
+                self.canvas.clear_text_preview()
             self.canvas.update()
 
+    def ask_text(self, text, style, under, place):
+        """The text dialog, previewing ``place(text, style)`` on the image (over ``under`` when rewriting)."""
+        from .text_tool import TextDialog
+        dialog = TextDialog(style, self, text=text, editing=under is not None)
+        self.canvas.text_under = under
+
+        def preview():
+            value = dialog.value()
+            if value.strip():
+                self.canvas.show_text_preview(place(value, dialog.text_style()))
+            else:
+                self.canvas.text_preview = None
+                self.canvas.update()
+
         dialog.changed.connect(preview)
+        if text:
+            preview()
         try:
             accepted = self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted)
         finally:
-            self.canvas.text_preview = None
-            self.canvas.update()
+            self.canvas.clear_text_preview()
         self.text_style = dialog.text_style()
-        if not accepted or document is not self.document or self.busy() or self.saving or self.finalizing:
+        return (dialog.value(), self.text_style) if accepted else None
+
+    def place_text(self, point):
+        """Ask for a new text at ``point`` (its top left), then write it as one edit."""
+        document = self.document
+        if document is None or self.busy() or self.canvas.stroke or self.mode != "text":
+            return
+        from .text_tool import placement_at
+        place = lambda text, style: placement_at(text, style, (point.x(), point.y()))  # noqa: E731
+        answer = self.ask_text("", self.text_style, None, place)
+        if answer is not None and document is self.document:
+            self.write_text(place(*answer), None)
+
+    def edit_text(self):
+        """Rewrite the selected text (its top left stays where it is)."""
+        state = self.current_text_state()
+        if state is None or self.busy() or self.canvas.stroke:
+            return
+        from .text_tool import placement_at
+        old = state.placement
+        top_left = old.corners()[0]
+        place = lambda text, style: placement_at(text, style, (top_left.x(), top_left.y()), old.angle)  # noqa: E731
+        under = qimage(state.under), QPointF(state.box[0], state.box[1])
+        document = self.document
+        answer = self.ask_text(old.text, old.style, under, place)
+        if answer is not None and document is self.document and self.current_text_state() is state:
+            self.write_text(place(*answer), state)
+
+    def transform_text(self, placement):
+        """A drag on the box ended: write the text where it now is."""
+        state = self.current_text_state()
+        if state is None:
+            self.canvas.clear_text_preview()
+            return
+        self.write_text(placement, state)
+
+    def delete_text(self):
+        state = self.current_text_state()
+        if state is not None:
+            self.write_text(None, state)
+
+    def deselect_text(self):
+        self.text_selected = False
+        self.sync_text_box()
+
+    def write_text(self, placement, old):
+        """Write ``placement`` (None: take the text out) in place of ``old`` as one undoable edit."""
+        from .text_tool import text_layer, write_text
+        document = self.document
+        if document is None or self.busy():
+            self.canvas.clear_text_preview()
             return
         try:
-            stroke = text_stroke(document, dialog.value(), self.text_style, (point.x(), point.y()))
+            layer = text_layer(placement, document.image.size) if placement is not None else None
         except ImageProblem as error:
+            self.canvas.clear_text_preview()
             self.error(str(error))
             return
-        if stroke is None:
-            self.info(tr("入れる文字がありません。"))
+        if placement is not None and layer is None:
+            self.canvas.clear_text_preview()
+            self.info(tr("文字が画像の外に出るため、その位置には置けません。") if old is not None else tr("入れる文字がありません。"))
             return
+        boxes = [old.box] if old is not None else []
+        if layer is not None:
+            pixels, (x, y) = layer
+            boxes.append((x, y, x + pixels.width, y + pixels.height))
+        union = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+        self.autosave_timer.stop()
+        self.finalizing = True
         self.canvas.ready = False
-        stroke.apply()
-        self.canvas.refresh(stroke.box)
-        self.finish_stroke(stroke)
+        self.info(tr("文字を書き込み中…"))
+        self.update_controls()
+
+        def done(result):
+            state, changed = result
+            self.finalizing = False
+            if state is not None:
+                states = self.text_store.setdefault(document, {})
+                states[document.revision] = state
+                while len(states) > self.MAX_TEXT_STATES:
+                    states.pop(next(iter(states)))
+                self.text_selected = True
+            self.canvas.refresh(union)
+            self.canvas.clear_text_preview()
+            if changed or document.dirty:
+                self.after_edit()
+                if state is None:
+                    self.info(tr("文字を消しました。「元に戻す」で戻せます。"))
+            else:
+                self.prepare_effect()
+                self.update_controls()
+
+        def failed(message):
+            self.finalizing = False
+            self.canvas.refresh(union)
+            self.canvas.clear_text_preview()
+            self.error(message)
+            self.prepare_effect()
+            self.update_controls()
+
+        self.run_job(lambda cancel: write_text(document, placement, layer, old), done, failed)
 
     def adjust_strength(self, direction):
         """Keyboard replacement for the former weaker/stronger buttons."""
@@ -1438,7 +1564,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         if self.mode == "erase":
             self.strength_description.setText(tr("なぞった部分を元画像に戻します。読み込む前に保存した加工は戻せません。"))
         elif self.mode == "text":
-            self.strength_description.setText(tr("画像をクリックすると、文字を入れる画面が開きます。クリックした位置が文字の左上になります。"))
+            self.strength_description.setText(tr("画像をクリックして文字を入れます。入れた文字は、枠のドラッグで移動、角で拡大・縮小、上の丸で回転、ダブルクリックで書き直し、Deleteで削除できます。"))
         elif self.mode == "fill":
             self.strength_label.set_parts(tr("塗りつぶしの不透明度"), "")
             self.strength_box.setSuffix("%")

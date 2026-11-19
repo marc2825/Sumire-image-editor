@@ -1,6 +1,6 @@
 # Sumīre — 画像の仕上げ
 
-[![version](https://img.shields.io/badge/version-1.3.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.txt)
+[![version](https://img.shields.io/badge/version-1.4.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.txt)
 
 
 [English](README.en.md) · [简体中文](README.zh-CN.md)
@@ -24,7 +24,7 @@
 ## できること
 
 - モザイク・ぼかし・塗りつぶしで隠す（ブラシ・長方形・楕円・多角形・投げ縄）
-- 文字を入れる（フォント・大きさ・色を選択）
+- 文字を入れる（フォント・大きさ・色を選択。入れた後も移動・回転・拡大縮小・書き直し）
 - メタデータの確認・削除・復元（NovelAIのStealth PNGInfo、ChatGPTなどのC2PAにも対応）
 - 採用・保留・不採用のラベルとタグで仕分け（「要修正」などよく使うタグはボタンで）、ラベルごとのフォルダーへ振り分け
 - 作業タブ、フォルダー間の移動、連番での名前変更、重複の削除、複数枚の比較
@@ -76,7 +76,7 @@ python3 -m venv .venv
 - 復元用に残したメタデータは暗号化していません（プロンプトや位置情報も読める状態です）。
 - モザイクやぼかしでは完全には隠せません。確実に隠す部分は、不透明度100%で塗りつぶしてください。
 - 「メタデータ：無し」は、対応している種類を調べた結果です。未知の方法で埋め込まれた情報や、画像に描かれた文字は調べられません。
-- Sumīreは、AI生成イラストによる著作権の侵害を推進・助長するものではありません。画像を使う・公開するときは、著作権などの権利と、投稿先の規約を守ってください。
+- Sumīreは、AI生成イラストによる著作権の侵害を推進・助長するものではありません。画像を使う・公開するときは、著作権などの権利と、投稿先の規約を守り、ご自身の責任で使用ください。
 
 詳しくは[保存とプライバシー](docs/SAVING_AND_PRIVACY.md)をご覧ください。
 

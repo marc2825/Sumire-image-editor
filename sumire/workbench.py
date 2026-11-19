@@ -971,6 +971,13 @@ class Workbench:
             return
         tag = self.quick_tags[index]
         key = tag.casefold()
+        if "quick_tags" not in self.preferences.data:
+            # Keep the buttons as they are now: the default is named in the current language, and a later
+            # change of language must not rename the button away from the tags already given (issue #3).
+            try:
+                self.preferences.save({**self.preferences.data, "quick_tags": list(self.quick_tags)})
+            except OSError:
+                pass
         current = {path: self.model.tags.get(path, ()) for path in self.selected_or_current() if path in self.model.rows}
         if not current:
             return
@@ -1339,6 +1346,7 @@ class Workbench:
             "inverse_selection": self.inverse_action.isChecked(),
             "navigator": self.navigator_action.isChecked(),
             "text": self.text_style.to_settings(),
+            "quick_tags_open": self.quick_tag_toggle.isChecked(),
         }
 
     def workspace_state(self, *, session=False):
@@ -1394,7 +1402,7 @@ class Workbench:
                             (self.watch_action, "watch"), (self.novelai_adjust, "novelai_adjust"), (self.novelai_metadata, "novelai_metadata"), (self.mask_toggle, "show_mask"),
                             (self.metadata_backup, "metadata_backup"), (self.inverse_action, "inverse_selection"),
                             (self.strip_metadata, "strip_metadata"), (self.keep_originals, "keep_originals"),
-                            (self.navigator_action, "navigator")]:
+                            (self.navigator_action, "navigator"), (self.quick_tag_toggle, "quick_tags_open")]:
             if isinstance(data.get(key), bool):
                 widget.setChecked(data[key])
         if isinstance(data.get("brush"), int):
