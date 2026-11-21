@@ -1,4 +1,4 @@
-Sumīre 1.4.0 / Windows 11 x64
+Sumīre 1.5.0 / Windows 11 x64
 
 Getting started
 Extract the whole ZIP and double-click sumire.exe. Python is not needed.
@@ -18,6 +18,7 @@ Main features
 - Right-click an image: Save as, Convert format, Reduce file size, Upscale, Compare, Make a collage, numbering, Tags, Remove from list, Delete images (to the Recycle Bin).
 - Crop, Compare and Mask are below the image; rotate, flip and colour are in “More settings” in the right panel.
 - Text: choose “Text” (T) in the right panel and click the image to add text. Afterwards, move, rotate and resize it with its box, and double-click to rewrite.
+- ZIP: “File → Open ZIP…” or drag and drop shows and sorts the images in a ZIP without extracting it (read only; “Export from ZIP…” takes chosen images out).
 - Custom tags: tags you use often, such as “Needs fixing”, are added and removed with the buttons in “Custom tags” above the labels (keys 4–9).
 - Ctrl+C copies the result; Ctrl+V opens the clipboard image in a new tab. With the list focused, they cut, copy and paste the image files instead (Ctrl+X, Ctrl+C, Ctrl+V).
 

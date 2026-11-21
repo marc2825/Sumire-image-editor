@@ -1,5 +1,6 @@
 """Application window with independent, explicitly opened workspaces."""
 from .i18n import tr
+from .archive import is_archive
 from .labels import quick_tags
 from collections import OrderedDict, deque
 from pathlib import Path
@@ -320,9 +321,18 @@ class WorkspaceWindow(QMainWindow):
             page.info(tr("処理が終わったら画像・フォルダーを開きます…"))
             return
         project = len(inputs) == 1 and Path(inputs[0]).is_file() and Path(inputs[0]).suffix.lower() in PROJECT_EXTENSIONS
+        archives = [raw for raw in inputs if is_archive(raw)]
+        if archives and len(inputs) > 1:
+            # Each ZIP goes to a tab of its own; the other images and folders open as usual.
+            for raw in archives:
+                self.open_inputs([raw], source=page, mode="new")
+            rest = [raw for raw in inputs if raw not in archives]
+            if rest:
+                self.open_inputs(rest, source=page, mode=mode)
+            return
         occupied = bool(page.workspace_inputs or page.model.paths)
-        if project:
-            mode = "new"
+        if project or archives or page.archive is not None:
+            mode = "new"  # a ZIP is shown read only in its own tab; nothing is added to it
         elif mode is None:
             mode = self.choose_open_mode(page, inputs) if occupied else "append"
         if mode is None:

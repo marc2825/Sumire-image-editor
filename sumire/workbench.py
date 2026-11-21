@@ -20,7 +20,7 @@ from .export import check_cancel, file_digest
 from .folders import label_folder_target
 from .icons import icon, swatch
 from .imaging import ImageProblem, load_image
-from .labels import MAX_TAGS, REVIEW_LABELS, ReviewLabels, clean_tags
+from .labels import MAX_TAGS, REVIEW_LABELS, ReviewLabels, clean_tags, record_folder
 from .shortcuts import QUICK_TAG_COMMANDS
 from .text_tool import TextStyle
 from .library import COMPACT_GRID, LIST_ICON, LibraryDelegate, LibraryFilter, LibraryModel, LibraryView
@@ -29,6 +29,7 @@ from .organize import sequence_stems
 from .preferences import Preferences
 from .theme import TOKENS
 from .ui import Popover, SegmentComboBox, fact_table, html_text, repolish, section_label, tool_button
+from .archive_features import writes_files
 
 MAX_COMPARE = 6
 AUTO_SORT_TIP = tr(
@@ -301,6 +302,7 @@ class Workbench:
             ("compress_selected", tr("容量削減…"), lambda: self.convert_images(self.selected_or_current(), "compress")),
             ("collage", tr("コラージュを作成…"), self.make_collage),
             ("merge_labels", tr("ラベルのフォルダーをまとめる…"), self.merge_label_folders),
+            ("export_archive", tr("ZIPから書き出す…"), self.export_from_archive),
         ]
         for key, text, callback in actions:
             action = QAction(text, self)
@@ -335,7 +337,7 @@ class Workbench:
         # Whole-tab work that has no button of its own (一括削除・リセット・採用の書き出し・
         # 整理を戻す are buttons in the panel header).
         menu = self.library_menu
-        for item in (self.number_button, None, self.workflow_actions["convert_all"], self.workflow_actions["compress_all"],
+        for item in (self.workflow_actions["export_archive"], self.number_button, None, self.workflow_actions["convert_all"], self.workflow_actions["compress_all"],
                      None, self.workflow_actions["merge_labels"], self.workflow_actions["duplicates"], self.workflow_actions["reset_list"], None, self.watch_action):
             menu.addSeparator() if item is None else menu.addAction(item)
 
@@ -345,6 +347,12 @@ class Workbench:
         menu.setToolTipsVisible(True)
         menu.addMenu(self.label_menu)
         menu.addSeparator()
+        if self.archive is not None:
+            # A ZIP is read only: what it offers is choosing, looking and taking images out.
+            for item in (self.workflow_actions["export_archive"], None, self.workflow_actions["compare"], None,
+                         self.workflow_actions["note"], self.workflow_actions["tags"], None, self.workflow_actions["remove_selected"]):
+                menu.addSeparator() if item is None else menu.addAction(item)
+            return
         self.populate_move_menu(menu, self.selected_or_current())
         for item in (self.workflow_actions["save_as"], self.workflow_actions["save_selected"],
                      self.workflow_actions["convert_selected"], self.workflow_actions["compress_selected"], None,
@@ -381,6 +389,7 @@ class Workbench:
         else:
             action()
 
+    @writes_files
     def delete_selected(self):
         """Move the selected images (or the shown one) to the recycle bin, after a confirmation."""
         paths = [path for path in self.selected_or_current() if path in self.model.rows]
@@ -487,11 +496,13 @@ class Workbench:
             self.apply_search()
 
     def selected_paths(self):
-        selected = {Path(index.data(Qt.ItemDataRole.UserRole)) for index in self.list.selectionModel().selectedIndexes()}
-        return [path for path in self.model.paths if path in selected]
+        # The model's own items (files, or images in a ZIP), found through the rows, not their text.
+        rows = {self.proxy.mapToSource(index).row() for index in self.list.selectionModel().selectedIndexes()}
+        return [path for row, path in enumerate(self.model.paths) if row in rows]
 
     def visible_paths(self):
-        return [Path(self.proxy.index(row, 0).data(Qt.ItemDataRole.UserRole)) for row in range(self.proxy.rowCount())]
+        paths = self.model.paths
+        return [paths[self.proxy.mapToSource(self.proxy.index(row, 0)).row()] for row in range(self.proxy.rowCount())]
 
     def source_row(self, index):
         return self.proxy.mapToSource(index).row() if index.isValid() else -1
@@ -516,7 +527,7 @@ class Workbench:
         self.library_panel.setMinimumWidth(max(208, self.library_header.minimumSize().width() + 24, max(widths) + 24))
         self.update_library_actions_layout()
         self.list.setEditTriggers((QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed)
-                                  if ready else QAbstractItemView.EditTrigger.NoEditTriggers)
+                                  if ready and self.archive is None else QAbstractItemView.EditTrigger.NoEditTriggers)
         selected = self.selected_paths()
         self.filter_combo.setEnabled(ready)
         self.search.setEnabled(bool(self.model.paths) or bool(self.proxy.text))
@@ -661,9 +672,10 @@ class Workbench:
                 selection.select(index, QItemSelectionModel.SelectionFlag.Select)
 
     def label_index(self, path):
-        if path.parent not in self.label_indexes:
-            self.label_indexes[path.parent] = ReviewLabels(path.parent)
-        return self.label_indexes[path.parent]
+        folder = record_folder(path)  # an image in a ZIP: the records of the ZIP's folder
+        if folder not in self.label_indexes:
+            self.label_indexes[folder] = ReviewLabels(folder)
+        return self.label_indexes[folder]
 
     def apply_review_label(self, label):
         if not self.document or self.busy() or self.saving:
@@ -690,7 +702,7 @@ class Workbench:
 
     def label_folder_targets(self, paths, label):
         """{path: label folder} when 「ラベルのフォルダーへ自動で振り分ける」 is on (never for removing a label)."""
-        if label is None or not self.auto_sort_action.isChecked():
+        if label is None or not self.auto_sort_action.isChecked() or self.archive is not None:
             return {}
         targets = {path: label_folder_target(path, label) for path in paths}
         return {path: folder for path, folder in targets.items() if folder is not None}
@@ -726,6 +738,7 @@ class Workbench:
     def selected_or_current(self):
         return self.selected_paths() or ([self.document.path] if self.document else [])
 
+    @writes_files
     def reset_whole_list(self):
         """Return this tab to its initial state, as far as it can be.
 
@@ -857,7 +870,7 @@ class Workbench:
     def write_labels(self, values, history=None):
         grouped = defaultdict(dict)
         for path, label in values.items():
-            grouped[path.parent][path] = label
+            grouped[record_folder(path)][path] = label
         changed = {}
         selection = self.list.selectionModel()
         selection.blockSignals(True)
@@ -892,7 +905,7 @@ class Workbench:
         """{path: tags} into each folder's records; ``history`` (the tags before) makes it undoable."""
         grouped = defaultdict(dict)
         for path, tags in values.items():
-            grouped[path.parent][path] = tags
+            grouped[record_folder(path)][path] = tags
         written = {}
         try:
             for folder, updates in grouped.items():
@@ -1090,6 +1103,7 @@ class Workbench:
                 self.error(tr("メモを元に戻せませんでした。"))
         self.update_controls()
 
+    @writes_files
     def export_labels(self):
         """Move (default) or copy the images of a label, or of each label, into label folders."""
         if self.busy() or self.saving:
@@ -1135,6 +1149,7 @@ class Workbench:
             return Path(pictures) if pictures else Path.home()
         return folder
 
+    @writes_files
     def save_selected(self):
         paths = self.selected_paths()
         if paths and not self.busy() and not self.saving:
@@ -1177,6 +1192,8 @@ class Workbench:
         self.run_job(process, done, failed)
 
     def review_pixels(self, path):
+        if self.archive is not None:
+            return load_image(path)  # an image in a ZIP has no saved copy
         index = self.source_index(path) if self.overwrite.isChecked() else self.receipts
         record = index.get(path, overwrite=self.overwrite.isChecked()) if index else None
         if record:
@@ -1185,6 +1202,7 @@ class Workbench:
                 return load_image(target)
         return load_image(path)
 
+    @writes_files
     def analyze_duplicates(self):
         if self.busy() or self.saving:
             return
@@ -1363,6 +1381,8 @@ class Workbench:
         at_root = self.folder_root is None or self.browsed_folder() == self.folder_root
         if self.custom_title and (at_root or session):
             value["title"] = self.custom_title
+        if self.archive is not None:
+            value["archive_folder"] = self.archive_folder
         if session:
             value.update(search=self.search.text(), excluded=[str(path) for path in sorted(self.excluded_paths)])
             if self.folder_root is not None:

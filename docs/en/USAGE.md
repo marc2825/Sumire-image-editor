@@ -42,6 +42,17 @@ Drag images from the list onto a folder in the bar, or right-click → “Move t
 - If the shown image has unsaved edits, Sumīre asks whether to save. Images with unsaved edits other than the shown one are not moved.
 - “Undo the last organising step” (Ctrl+Alt+Z) puts them back.
 
+## Opening a ZIP
+
+“File → Open ZIP…” or dropping a ZIP shows the images inside it without extracting them. The ZIP opens in a new tab, and the list, thumbnails, ←/→, zoom and comparison work as for a folder.
+
+- Move between the ZIP's folders with the bar above the list. A ZIP whose images are all in one folder starts inside it.
+- A ZIP is read only: no editing, saving, renaming, moving, deleting or metadata removal, and the ZIP itself is never changed (viewing the metadata works).
+- Accept / Hold / Reject labels, tags and notes can be given. They are kept in the records of the ZIP's folder, not in the ZIP. If the ZIP is moved or renamed, or an image in it changes, that image's label is not carried over.
+- “Export from ZIP…” (right-click or the list's “⋯”) writes the chosen images, exactly as stored, to a folder. You can keep the ZIP's folder structure; a file of the same name is never overwritten (`_2` and so on is added).
+- If the ZIP is changed or deleted after it was opened, its images are not read and you are told so. Ctrl+R opens it again.
+- Items with unsafe names (such as ones containing `..`), duplicate names, encryption, links, unsupported compression, more than 256 MiB after decompression or an extreme compression ratio are left out of the list, and their number is shown.
+
 ## Tabs
 
 The list, edits and save method are separate for each tab.

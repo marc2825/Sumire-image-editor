@@ -11,6 +11,7 @@ from .canvas import qimage
 from .editing import EditSpec, apply_edit
 from .imaging import clean_pixels, ImageProblem, validate_opened, MAX_PIXELS, MAX_DIMENSION
 from .stealth import remove_stealth
+from .archive_features import writes_files
 
 
 class EditorFeatures:
@@ -69,6 +70,7 @@ class EditorFeatures:
             self.format_combo.setItemText(1, tr("JPEG · 品質{jpeg_quality}・白背景").format(jpeg_quality=self.jpeg_quality))
             self.export_settings_changed()
 
+    @writes_files
     def edit_image(self, mode="crop"):
         if not self.document or self.busy() or self.saving:
             return
@@ -85,6 +87,7 @@ class EditorFeatures:
             return
         self.apply_image_edit(spec)
 
+    @writes_files
     def transform_image(self, rotation=0, horizontal=False, vertical=False):
         """Rotate or flip at once. Lossless and reversible, so no overwrite confirmation."""
         if not self.document or self.busy() or self.saving:
@@ -174,7 +177,7 @@ class EditorFeatures:
         self.run_job(lambda cancel: clean_pixels(remove_stealth(pixels)), done, failed)
 
     def is_clipboard_path(self, path):
-        return path.parent.resolve() == (self.preferences.path.parent / "clipboard-images").resolve()
+        return isinstance(path, Path) and path.parent.resolve() == (self.preferences.path.parent / "clipboard-images").resolve()
 
     def paste_image(self):
         if self.busy() or self.saving:

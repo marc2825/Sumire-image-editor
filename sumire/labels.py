@@ -69,9 +69,19 @@ def split_tags(text: str) -> tuple[str, ...]:
     return clean_tags(re.split(r"[,、，\n]", text))
 
 
-def label_key(path: Path) -> str:
+def label_key(path) -> str:
     # Unlike save receipts, a label survives changes to the image at this path.
+    # An image in a ZIP has its own key (the ZIP, the name inside it and its content).
+    from .archive import ArchiveEntry
+    if isinstance(path, ArchiveEntry):
+        return path.key
     return hashlib.sha256(os.path.normcase(str(path.resolve())).encode("utf-8")).hexdigest()
+
+
+def record_folder(path) -> Path:
+    """The folder whose records hold this image's label: its own folder, or the folder of its ZIP."""
+    from .archive import ArchiveEntry
+    return path.archive.parent if isinstance(path, ArchiveEntry) else path.parent
 
 
 class ReviewLabels:
@@ -113,13 +123,13 @@ class ReviewLabels:
     def set(self, path: Path, label: str | None):
         if label is not None and label not in REVIEW_LABELS:
             raise ValueError("Unknown review label")
-        if path.resolve().parent != self.folder:
+        if (record_folder(path) if not isinstance(path, Path) else path.resolve().parent) != self.folder:
             raise ValueError("Review labels belong to the source folder")
         key = label_key(path)
         self._write({key: label})
 
     def set_many(self, values):
-        if any(path.parent != self.folder or (label is not None and label not in REVIEW_LABELS) for path, label in values.items()):
+        if any(record_folder(path) != self.folder or (label is not None and label not in REVIEW_LABELS) for path, label in values.items()):
             raise ValueError("Invalid review label update")
         self._write({label_key(path): label for path, label in values.items()})
 
@@ -131,12 +141,12 @@ class ReviewLabels:
 
     def set_tags(self, values):
         """{path: tags} for images of this folder; empty tags remove the row."""
-        if any(path.parent != self.folder for path in values):
+        if any(record_folder(path) != self.folder for path in values):
             raise ValueError("Tags belong to the source folder")
         self._write({}, tags={label_key(path): clean_tags(tags) for path, tags in values.items()})
 
     def set_note(self, path, text):
-        if path.parent != self.folder or len(text) > 4000:
+        if record_folder(path) != self.folder or len(text) > 4000:
             raise ValueError("Invalid review note")
         self._write({}, {label_key(path): text})
 

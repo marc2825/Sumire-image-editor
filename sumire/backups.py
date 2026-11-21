@@ -48,7 +48,9 @@ class OriginalBackups:
             shutil.copy2(path, target)
             self.files[path] = (target, file_digest(target))
 
-    def has(self, path: Path) -> bool:
+    def has(self, path) -> bool:
+        if not isinstance(path, (str, os.PathLike)):
+            return False  # an image in a ZIP is never overwritten, so nothing is kept for it
         entry = self.files.get(Path(path).resolve())
         return entry is not None and entry[0].is_file()
 

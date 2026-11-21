@@ -1,6 +1,6 @@
 # Sumīre — 画像の仕上げ
 
-[![version](https://img.shields.io/badge/version-1.4.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.txt)
+[![version](https://img.shields.io/badge/version-1.5.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.txt)
 
 
 [English](README.en.md) · [简体中文](README.zh-CN.md)
@@ -31,6 +31,7 @@
 - 形式の変換、容量削減、コラージュ
 - 切り抜き・回転・色調の調整・超解像
 - メタデータを除いて、NovelAIやほかのアプリへ渡す
+- ZIPの中の画像を展開せずに見て仕分け、選んだ画像だけを書き出す（ZIPは変更しません）
 
 表示言語は日本語・英語・簡体字中国語です。通信はせず、NovelAIを開くときだけ既定のブラウザーを使います。
 

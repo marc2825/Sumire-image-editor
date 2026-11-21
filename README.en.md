@@ -1,6 +1,6 @@
 # Sumīre — image finishing
 
-[![version](https://img.shields.io/badge/version-1.4.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.en.txt)
+[![version](https://img.shields.io/badge/version-1.5.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.en.txt)
 
 [日本語](README.md) · English · [简体中文](README.zh-CN.md)
 
@@ -29,6 +29,7 @@ On the first start, choose whether to overwrite the originals or save to a separ
 - Format conversion, file size reduction, collages
 - Crop, rotate, colour adjustment, upscaling
 - Hand images without metadata to NovelAI or other apps
+- View and sort the images in a ZIP without extracting it, and export only the chosen ones (the ZIP is not changed)
 
 The interface is available in Japanese, English and Simplified Chinese. Sumīre makes no network requests; it only opens your default browser for NovelAI.
 

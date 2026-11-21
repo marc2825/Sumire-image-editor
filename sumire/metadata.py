@@ -31,10 +31,10 @@ WEBP_PIXELS = {b"VP8 ", b"VP8L", b"VP8X", b"ALPH", b"ANIM", b"ANMF"}
 C2PA = tr("C2PA（コンテンツ認証情報）")
 
 
-def categories(image, path=None):
+def categories(image, path=None, raw=None):
     """Fixed category names for an opened, loaded image; never keys or values.
 
-    ``path`` (the image's file) is read for the parts Pillow does not keep, such as C2PA.
+    ``path`` (the image's file) or ``raw`` (its bytes) is read for the parts Pillow does not keep, such as C2PA.
     """
     found = set()
     exif = image.getexif()
@@ -63,7 +63,8 @@ def categories(image, path=None):
         found.add("XMP")
     if keys - STRUCTURAL - {"exif", "icc_profile", "xmp", "xml:com.adobe.xmp"}:
         found.add(tr("テキスト・その他の付加情報"))
-    store = provenance.file_store(path, image.format) if path is not None else None
+    store = (provenance.raw_store(raw, image.format) if raw is not None
+             else provenance.file_store(path, image.format) if path is not None else None)
     if store:
         found.add(C2PA)
     xmp = image.info.get("xmp") or image.info.get("XML:com.adobe.xmp")
@@ -818,12 +819,17 @@ def describe_metadata(path):
     Items whose meaning is unknown are listed under 不明 with their size, never omitted.
     """
     from PIL import ExifTags
+    from .archive import ArchiveEntry, read_entry
     from .export import file_digest
-    path = Path(path)
-    if path.stat().st_size > MAX_INPUT_BYTES:
-        raise ImageProblem(tr("ファイルが大きすぎます。"))
-    digest = file_digest(path)
-    raw = path.read_bytes()
+    if isinstance(path, ArchiveEntry):
+        raw = read_entry(path)  # checked against the ZIP as listed; the ZIP is never written
+        digest = None
+    else:
+        path = Path(path)
+        if path.stat().st_size > MAX_INPUT_BYTES:
+            raise ImageProblem(tr("ファイルが大きすぎます。"))
+        digest = file_digest(path)
+        raw = path.read_bytes()
     entries = []
     try:
         with Image.open(io.BytesIO(raw)) as image:
@@ -897,6 +903,6 @@ def describe_metadata(path):
                     entries.append((tr("不明"), label, tr("不明（{count:,}バイト）").format(count=len(payload))))
     except (OSError, ValueError, SyntaxError, struct.error):
         raise ImageProblem(tr("メタデータを読み取れません。形式・破損・アクセス権を確認してください。")) from None
-    if file_digest(path) != digest:
+    if digest is not None and file_digest(path) != digest:
         raise ImageProblem(tr("確認中にファイルが変更されました。もう一度確認してください。"))
     return entries

@@ -9,6 +9,7 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | What you want | Where |
 | --- | --- |
 | Open images or folders | The buttons on the start page, “File” at the top left, or drag and drop |
+| View the images in a ZIP | “File → Open ZIP…” or drag and drop (not extracted, read only; “Export from ZIP…” takes chosen images out) |
 | Work on several things at once | Tabs. They are restored at the next start. Double-click a tab to rename it |
 | Open or create folders inside | The folder bar above the list |
 | Move images to another folder | Drag them onto a folder in the bar, or right-click → “Move to folder” |

@@ -16,11 +16,12 @@ from PySide6.QtWidgets import (
 
 from . import DISPLAY_VERSION
 from .export import check_cancel, file_digest
-from .labels import ReviewLabels, quick_tags
+from .labels import ReviewLabels, quick_tags, record_folder
 from .projects import PROJECT_EXTENSIONS, read_project, write_project
 from .session import Receipts
 from .storage import delete_records, migrate_records, record_path
 from .ui import COPYRIGHT, tool_button
+from .archive_features import writes_files
 
 DEFAULT_PRESETS = {
     "とても細かいモザイク": {"mode": "mosaic", "brush": 60, "strength": 6, "color": "#000000", "shape": "brush", "expansion": 1},
@@ -77,7 +78,7 @@ class AppFeatures:
         """Keep opening files separate from the displayed workspace name."""
         menu = self.file_menu = QMenu(tr("ファイル"), self)
         menu.setToolTipsVisible(True)
-        for action in (self.open_folder_action, self.open_files_action, self.app_actions["open_project"]):
+        for action in (self.open_folder_action, self.open_files_action, self.open_archive_action, self.app_actions["open_project"]):
             menu.addAction(action)
         self.recent_menu = QMenu(tr("最近使ったフォルダー"), self)
         self.recent_menu.aboutToShow.connect(self.populate_recent_menu)
@@ -176,6 +177,7 @@ class AppFeatures:
         self.info(tr("設定を初期状態に戻しました。"))
         return True
 
+    @writes_files
     def restore_metadata_copy(self):
         from .metadata import MetadataStore, restore_copy, unpack_backup
         from .imaging import ImageProblem
@@ -288,7 +290,7 @@ class AppFeatures:
             self.open_inputs(inputs)
 
     def known_record_folders(self):
-        folders = {path.parent for path in self.model.paths}
+        folders = {record_folder(path) for path in self.model.paths}
         stored = self.preferences.data.get("record_folders", [])
         if isinstance(stored, list):
             folders.update(Path(folder) for folder in stored if isinstance(folder, str))
@@ -369,7 +371,7 @@ class AppFeatures:
         def erase():
             if QMessageBox.question(dialog, tr("管理記録を削除"), tr("この一覧と出力先の保存記録・ラベル・メモ・加工マスク・復元用メタデータを削除します。削除するとメタデータは戻せません（画像と保存済みプロジェクトは残ります）。削除しますか？")) != QMessageBox.StandardButton.Yes:
                 return
-            folders = {path.parent for path in self.model.paths}
+            folders = {record_folder(path) for path in self.model.paths}
             if self.output_folder:
                 folders.add(self.output_folder)
             dialog.accept()
@@ -392,6 +394,7 @@ class AppFeatures:
         if raw:
             self.open_inputs([raw])
 
+    @writes_files
     def save_project(self):
         if not self.document or self.busy() or self.saving:
             return
@@ -444,6 +447,8 @@ class AppFeatures:
             self.documents.clear()
             self.owned.clear()
             self.operation_history.clear()
+            self.archive = None
+            self.archive_folder = ""
             self.model.set_paths([path])
             self.overwrite.blockSignals(True)
             self.overwrite.setChecked(False)

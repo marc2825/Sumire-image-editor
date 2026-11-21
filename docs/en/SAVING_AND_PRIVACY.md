@@ -95,6 +95,15 @@ With “Keep removed metadata for restoring” (on by default), the original met
 
 **Compression is not encryption.** The records keep removed prompts, location data and embedded thumbnails as they were. When sharing images, do not include the records (`.sumire-index.sqlite3` and its temporary files).
 
+## Images in a ZIP
+
+Images in a ZIP are read from the ZIP each time they are shown; nothing is written to the ZIP.
+
+- Before reading, the ZIP's size and modification time from when it was opened, and the entry's size and CRC-32, are compared. If they differ, the image is not read and you are told so.
+- The ZIP is never held open, so it can be moved or deleted while it is shown.
+- Labels, tags and notes are kept in the records of the ZIP's folder, under an identifier made from the ZIP's location, the name inside it and its content (CRC-32 and size). They never attach to another ZIP or to an image whose content changed.
+- “Export from ZIP” writes the chosen images' data unchanged as new files. Existing files are never overwritten, and nothing is written outside the chosen folder.
+
 ## Records
 
 Save records, labels, notes, tags, edit masks and metadata kept for restoring are stored in SQLite records.

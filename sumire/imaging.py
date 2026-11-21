@@ -105,19 +105,29 @@ def srgb_pixels(image):
         raise ImageProblem(tr("ICCプロファイルをsRGBへ変換できません。元画像を確認してください。")) from None
 
 
-def load_image(path: Path, found: list | None = None) -> Image.Image:
-    """Clean pixels of ``path``; ``found`` receives the metadata categories of the file."""
+def _source(path):
+    """What Image.open reads, and the bytes when they come from a ZIP (``archive.ArchiveEntry``)."""
+    from .archive import ArchiveEntry, read_entry
+    if isinstance(path, ArchiveEntry):
+        raw = read_entry(path)
+        return io.BytesIO(raw), raw
+    if path.stat().st_size > MAX_INPUT_BYTES:
+        raise ImageProblem(tr("ファイルが大きすぎます。入力の上限は256MiBです。"))
+    return path, None
+
+
+def load_image(path, found: list | None = None) -> Image.Image:
+    """Clean pixels of ``path`` (a file or an image in a ZIP); ``found`` receives its metadata categories."""
     try:
-        if path.stat().st_size > MAX_INPUT_BYTES:
-            raise ImageProblem(tr("ファイルが大きすぎます。入力の上限は256MiBです。"))
+        source, raw = _source(path)
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(path) as opened:
+            with Image.open(source) as opened:
                 validate_opened(opened)
                 opened.load()
                 if found is not None:
                     from .metadata import categories
-                    found.extend(categories(opened, path))
+                    found.extend(categories(opened, None if raw is not None else path, raw=raw))
                 # Stealth data follows the encoded pixel order, so remove it
                 # before Orientation/ICC transforms or any editing can hide its header.
                 image = ImageOps.exif_transpose(remove_stealth(eight_bit(opened)))
@@ -132,14 +142,13 @@ def load_image(path: Path, found: list | None = None) -> Image.Image:
         raise ImageProblem(tr("画像を読み込めません。形式・破損・アクセス権を確認してください。")) from None
 
 
-def load_thumbnail(path: Path, size=(256, 256)) -> Image.Image:
+def load_thumbnail(path, size=(256, 256)) -> Image.Image:
     """Display-only decode: reduce before RGBA allocation; never used for export."""
     try:
-        if path.stat().st_size > MAX_INPUT_BYTES:
-            raise ImageProblem(tr("ファイルが大きすぎます。入力の上限は256MiBです。"))
+        source, _ = _source(path)
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(path) as opened:
+            with Image.open(source) as opened:
                 validate_opened(opened)
                 # The JPEG decoder can produce a small preview directly. Orientation
                 # is applied afterwards; request a square so rotated images fit too.

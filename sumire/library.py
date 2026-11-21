@@ -487,7 +487,7 @@ class LibraryDelegate(QStyledItemDelegate):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(TOKENS["raised"]))
             painter.drawRoundedRect(QRectF(rect), 6, 6)
-        name = Path(index.data(Qt.ItemDataRole.UserRole) or "").name
+        name = (index.data(Qt.ItemDataRole.DisplayRole) or "").split("\n")[0]  # the file name (also for an image in a ZIP)
         state, tone = state_summary(index.data(STATE_ROLE))
         state = tr_state(state)
         label = index.data(LABEL_ROLE)

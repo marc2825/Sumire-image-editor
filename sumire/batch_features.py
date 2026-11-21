@@ -11,6 +11,7 @@ from .masks import MaskStore
 from .session import Receipts, source_key
 from .ui import fact_table, html_text
 from .backups import store as originals
+from .archive_features import writes_files
 
 
 class BatchFeatures:
@@ -23,6 +24,7 @@ class BatchFeatures:
         self.batch_progress.setRange(0, total)
         self.batch_progress.setValue(completed)
 
+    @writes_files
     def start_batch(self):
         if self.busy() or self.saving or not self.model.paths:
             return

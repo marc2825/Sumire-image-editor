@@ -16,12 +16,14 @@ from .imaging import load_image
 from .export import available_target, check_cancel, detect_format, file_digest
 from .imaging import ImageProblem
 from .ui import fact_table, html_text
+from .archive_features import writes_files
 
 SAVE_AS_QUALITY = {"JPEG": None, "AVIF": 80, "HEIF": 80}
 
 
 class OutputFeatures:
     # --- conversion and compression -------------------------------------------------
+    @writes_files
     def convert_images(self, paths, mode):
         """``mode`` is "convert" (format) or "compress" (size); originals are never changed."""
         if not paths or self.busy() or self.saving:
@@ -238,6 +240,7 @@ class OutputFeatures:
         self.show_text_window(tr("処理できなかった画像"), "\n\n".join(f"{path}\n{reason}" for path, reason in failures.items()))
 
     # --- save as -----------------------------------------------------------------------
+    @writes_files
     def save_as(self):
         """Save the displayed image (with edits, without metadata) under a new name and format."""
         if not self.document or self.busy() or self.saving:
@@ -288,6 +291,7 @@ class OutputFeatures:
         self.auxiliary_job(work, lambda path: tr("別名で保存しました · {name} · メタデータ：無し").format(name=path.name))
 
     # --- in-place 超解像 ---------------------------------------------------------------
+    @writes_files
     def upscale_image(self):
         if not self.document or self.busy() or self.saving:
             return
@@ -317,6 +321,7 @@ class OutputFeatures:
         return self.confirm_dialog(confirm)
 
     # --- collage -----------------------------------------------------------------------
+    @writes_files
     def make_collage(self):
         from .collage import MAX_COLLAGE
         paths = self.selected_or_current()

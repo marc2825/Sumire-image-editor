@@ -9,6 +9,7 @@ Use “Open folder” or “Open images” on the start page, or drag and drop. 
 - Opening a folder lists the images directly inside it. Folders inside it can be opened from the bar above the list (see [Moving between folders](#moving-between-folders)).
 - Opening images lists only those images.
 - While working, you can add what you open to the current tab or open it in a new tab.
+- “File → Open ZIP…” or dropping a ZIP shows the images in it without extracting them (in a new tab, read only).
 
 Next time, Sumīre starts where you left off: the same tabs and images.
 

@@ -1,6 +1,6 @@
 # Sumīre — 图像修整
 
-[![version](https://img.shields.io/badge/version-1.4.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.zh-CN.txt)
+[![version](https://img.shields.io/badge/version-1.5.0-a7dfc2)](CHANGELOG.md) [![tests](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/marc2825/Sumire-image-editor/actions/workflows/tests.yml) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![platform](https://img.shields.io/badge/platform-Windows%2011-lightgrey)](README-Windows.zh-CN.txt)
 
 [日本語](README.md) · [English](README.en.md) · 简体中文
 
@@ -29,6 +29,7 @@ Sumīre 是一款适用于 Windows 11 的应用，可以用马赛克或模糊隐
 - 转换格式、压缩体积、拼贴
 - 裁剪、旋转、调整色调、超分辨率放大
 - 将不含元数据的图像交给 NovelAI 或其他应用
+- 无需解压即可查看和分拣 ZIP 中的图像，只导出所选图像（不会更改 ZIP）
 
 界面支持日语、英语和简体中文。本应用不进行网络通信，仅在使用 NovelAI 时打开默认浏览器。
 

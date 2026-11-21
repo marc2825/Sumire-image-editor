@@ -41,6 +41,8 @@ from .output_features import OutputFeatures
 from .folder_features import FolderFeatures
 from .backups import store as originals
 from .metadata import inspect_metadata
+from .archive import is_archive
+from .archive_features import ArchiveFeatures, modified_key, writes_files
 
 # The overwrite notice is shown once per run unless the user hides it for good.
 OVERWRITE_NOTICE = {"shown": False}
@@ -62,7 +64,7 @@ OVERWRITE_DEFAULT = False
 # A first start (and 「設定を初期状態に戻す」) brushes with the 「細かいモザイク」 preset.
 START_TOOL = DEFAULT_PRESETS["細かいモザイク"]
 
-class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, RenameFeatures, BatchFeatures, Workbench, QMainWindow):
+class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, RenameFeatures, BatchFeatures, Workbench, QMainWindow):
     closed = Signal(object)
     closeCancelled = Signal()
     stateChanged = Signal()
@@ -119,6 +121,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.init_workbench()
         self.init_features()
         self.init_folders()
+        self.init_archive()
         self.bindings = load_bindings(self.preferences)
         self.autosave_timer = QTimer(self)
         self.autosave_timer.setSingleShot(True)
@@ -171,6 +174,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         action = self._action
         self.open_folder_action = action(tr("フォルダーを開く…"), self.open_folder, "Ctrl+O")
         self.open_files_action = action(tr("画像を開く…"), self.open_files)
+        self.open_archive_action = action(tr("ZIPを開く…"), self.choose_archive)
+        self.open_archive_action.setToolTip(tr("ZIPの中の画像を、展開せずに見たり選んだりします（ZIPは変更しません）。"))
         self.reload_action = action(tr("一覧を再読み込み"), self.reload_workspace, "Ctrl+R")
         self.manual_save = action(tr("保存"), self.save, "Ctrl+S")
         self.metadata_button = action(tr("メタデータを削除して保存"), lambda: self.save(force=True, strip=True),
@@ -621,6 +626,15 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidget(right)
         outer.addWidget(scroll, 1)
+        # In a ZIP tab the tools give way to this note (the images there are read only).
+        self.read_only_note = QLabel(tr("ZIPの中の画像は読み取り専用です。加工や保存はできません。\n"
+                                        "仕分け・比較・メタデータの確認はでき、「ZIPから書き出す」で選んだ画像を取り出せます。"))
+        self.read_only_note.setObjectName("faint")
+        self.read_only_note.setWordWrap(True)
+        self.read_only_note.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.read_only_note.setContentsMargins(16, 14, 16, 12)
+        self.read_only_note.hide()
+        outer.addWidget(self.read_only_note, 1)
 
         footer = QFrame()
         footer.setObjectName("panelFooter")
@@ -1111,6 +1125,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.file_label.setText(self.document.path.name if has else "")
         self.update_page()
         self.update_workbench_controls()
+        self.apply_read_only_controls()
         self.stateChanged.emit()
 
     def save_mode_text(self):
@@ -1225,6 +1240,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
                 pass
         return True
 
+    @writes_files
     def restore_original(self):
         document = self.document
         if document is None or self.busy() or self.saving or not originals().has(document.path):
@@ -1447,6 +1463,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.text_style = dialog.text_style()
         return (dialog.value(), self.text_style) if accepted else None
 
+    @writes_files
     def place_text(self, point):
         """Ask for a new text at ``point`` (its top left), then write it as one edit."""
         document = self.document
@@ -1490,6 +1507,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.text_selected = False
         self.sync_text_box()
 
+    @writes_files
     def write_text(self, placement, old):
         """Write ``placement`` (None: take the text out) in place of ``old`` as one undoable edit."""
         from .text_tool import text_layer, write_text
@@ -1626,6 +1644,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         job.signals.cancelled.connect(lambda: failed(tr("処理を中止しました。")))
         return job
 
+    @writes_files
     def export_edit_mask(self):
         if not self.document or self.busy() or self.saving:
             return
@@ -1675,7 +1694,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         self.canvas.update()
 
     def prepare_effect(self):
-        if self.closing or not self.workspace_active or not self.document or self.busy():
+        if self.closing or not self.workspace_active or not self.document or self.busy() or self.archive is not None:
             return
         key = (self.document, self.document.revision, self.tool().effect_key)
         if self.mode == "text":
@@ -1747,6 +1766,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         # before run_job returns, so connecting afterwards can miss the signal.
         job = self.effect_job = self.run_job(compute, done, failed, finished=finished)
 
+    @writes_files
     def reset_edits(self):
         if self.busy() or self.saving or self.document is None:
             return
@@ -1867,6 +1887,13 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
     def ready_hint(self):
         """What drawing does under the current save settings, with the keys to continue."""
         next_key, save_next = (self.shortcut_hint(name) for name in ("next", "save_next"))
+        if self.archive is not None:
+            # A ZIP is only looked at: say so, with what was left out of the list.
+            parts = [tr("ZIP（読み取り専用）")]
+            if next_key:
+                parts.append(tr("{next_key}で次へ").format(next_key=next_key))
+            skipped = self.archive.skipped_text()
+            return " · ".join(parts + ([skipped] if skipped else []))
         parts = [tr("なぞると自動保存") if self.auto.isChecked() else tr("なぞって加工")]
         if next_key:
             parts.append(tr("{next_key}で次へ").format(next_key=next_key))
@@ -1943,11 +1970,16 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         if len(inputs) == 1 and Path(inputs[0]).is_file() and Path(inputs[0]).suffix.lower() in PROJECT_EXTENSIONS:
             self.open_project(Path(inputs[0]).resolve())
             return
+        if len(inputs) == 1 and is_archive(inputs[0]):
+            self.guard(lambda: self.open_archive(Path(inputs[0]).resolve()))
+            return
         self.guard(lambda: self._scan(inputs))
 
     def reload_workspace(self):
         if self.workspace_inputs and not self.busy() and not self.saving:
             self.browse_target = self.browsed_folder()
+            if self.archive is not None:
+                self.archive_target = self.archive_folder
             self.load_inputs(list(self.workspace_inputs))
 
     def append_inputs(self, inputs):
@@ -1956,6 +1988,10 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             self.load_inputs(inputs)
             return
         if self.busy() or self.saving:
+            return
+        if self.archive is not None or any(is_archive(raw) for raw in inputs):
+            # A ZIP is shown in a tab of its own; images are not added to it, nor a ZIP to a folder's list.
+            self.info(tr("ZIPは、ほかの画像と同じタブには開けません。新しいタブで開いてください。"))
             return
         try:
             self.remember_workspace()
@@ -2033,7 +2069,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
     def ordered_paths(paths, order):
         if order == "manual":
             return list(paths)
-        key = (lambda path: (path.stat().st_mtime_ns, filename_key(path), str(path))) if order.startswith("date") else (lambda path: (filename_key(path), str(path)))
+        key = (lambda path: (modified_key(path), filename_key(path), str(path))) if order.startswith("date") else (lambda path: (filename_key(path), str(path)))
         return sorted(paths, key=key, reverse=order.endswith("desc"))
 
     def replace_list(self, paths, mapping=None):
@@ -2152,6 +2188,8 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             selection = self.list.selectionModel()
             selection.blockSignals(True)
             paths, self.output_folder, self.receipts, states, self.source_indexes, self.label_indexes, labels = result
+            self.archive = None
+            self.archive_folder = ""
             self.index = -1
             self.document = None
             self.canvas.set_document(None)
@@ -2250,6 +2288,9 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
             return
         if not self.document or self.busy():
             return
+        if self.archive is not None:  # nothing to save in a ZIP: Enter only moves on
+            self.navigate(1)
+            return
         visible = self.visible_paths()
         row = visible.index(self.document.path) + 1 if self.document.path in visible else len(visible)
         self.guard(lambda: self._load_index(self.model.rows[visible[row]]) if row < len(visible) else self.info(tr("最後の画像まで保存しました。")), force_save=True)
@@ -2282,6 +2323,13 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
 
         def load(cancel):
             check_cancel(cancel)
+            if self.archive is not None:
+                # An image in a ZIP: read for viewing only (no save records, masks or originals).
+                found = []
+                document = Document(path, load_image(path, found))
+                document.metadata = found
+                check_cancel(cancel)
+                return document, None
             source_digest = file_digest(path)
             index = self.source_index(path) if overwrite else receipts
             record = index.get(path, overwrite=overwrite)
@@ -2449,6 +2497,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
     def set_review_label(self, label):
         self.apply_review_label(label)
 
+    @writes_files
     def open_novelai(self, target="novelai"):
         """Prepare a PNG of the edited image (metadata-free unless the NovelAI option asks) and hand it over.
 
@@ -2546,6 +2595,7 @@ class Window(FolderFeatures, OutputFeatures, EditorFeatures, AppFeatures, Rename
         if folder and folder.is_dir():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
+    @writes_files
     def save(self, force=False, strip=False):
         """``strip`` removes metadata even when the save settings keep it."""
         self.autosave_timer.stop()

@@ -12,6 +12,7 @@ from .imaging import ImageProblem
 from .labels import ReviewLabels
 from .organize import rename_images, renamed_path, sequence_stems
 from .session import Receipts
+from .archive_features import writes_files
 
 
 class RenameFeatures:
@@ -38,6 +39,7 @@ class RenameFeatures:
             return
         self.rename_paths({source: target})
 
+    @writes_files
     def number_images(self, paths=None):
         if not self.model.paths or self.busy() or self.saving:
             return
@@ -63,6 +65,7 @@ class RenameFeatures:
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.rename_paths(mapping)
 
+    @writes_files
     def rename_paths(self, mapping, undoing=False):
         if self.busy() or self.saving or not mapping or all(str(old) == str(new) for old, new in mapping.items()):
             return

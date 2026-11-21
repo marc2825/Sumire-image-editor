@@ -19,6 +19,7 @@ from .icons import icon
 from .imaging import ImageProblem
 from .library import LibraryView
 from .ui import ElidedLabel, tool_button
+from .archive_features import writes_files
 
 FOLDER_ROLE = Qt.ItemDataRole.UserRole
 
@@ -88,7 +89,8 @@ class FolderFeatures:
         column.setSpacing(4)
         row = QHBoxLayout()
         row.setSpacing(4)
-        self.folder_up_button = tool_button("folder_up", tr("上のフォルダーへ"), self.open_parent_folder)
+        self.folder_up_button = tool_button("folder_up", tr("上のフォルダーへ"),
+                                            lambda: self.open_archive_parent() if self.archive is not None else self.open_parent_folder())
         row.addWidget(self.folder_up_button)
         self.folder_path_label = ElidedLabel("", Qt.TextElideMode.ElideLeft)
         self.folder_path_label.setObjectName("muted")
@@ -100,7 +102,7 @@ class FolderFeatures:
         row.addWidget(self.new_folder_button)
         column.addLayout(row)
         self.folder_list = FolderList()
-        self.folder_list.folderOpened.connect(lambda raw: self.open_folder_in_tab(Path(raw)))
+        self.folder_list.folderOpened.connect(self.folder_row_opened)
         self.folder_list.imagesDropped.connect(lambda raws, folder: self.move_to_folder([Path(raw) for raw in raws], Path(folder)))
         column.addWidget(self.folder_list)
         self.folder_bar.hide()
@@ -136,23 +138,31 @@ class FolderFeatures:
 
     def refresh_folders(self):
         current = self.browsed_folder()
-        visible = current is not None and self.folder_root is not None
+        archive = self.archive is not None
+        visible = archive or (current is not None and self.folder_root is not None)
         self.folder_bar.setVisible(visible)
         self.folder_list.clear()
         if not visible:
             return
-        self.folder_path_label.setText(self.folder_location())
-        self.folder_path_label.setToolTip(str(current))
-        at_root = current == self.folder_root
-        self.folder_up_button.setEnabled(not at_root)
-        rows = []
-        if not at_root:
-            rows.append((current.parent, tr("..（上のフォルダー）"), "folder_up"))
-        rows.extend((folder, folder.name, "folder") for folder in subfolders(current))
+        if archive:
+            # Inside a ZIP: its folders, the ZIP's name first; marked read only.
+            self.folder_path_label.setText(self.archive_location() + tr(" · 読み取り専用"))
+            self.folder_path_label.setToolTip(tr("{zip}\nZIPの中の画像は変更しません（読み取り専用）。").format(zip=self.archive.path))
+            self.folder_up_button.setEnabled(bool(self.archive_folder))
+            rows = self.archive_folder_rows()
+        else:
+            self.folder_path_label.setText(self.folder_location())
+            self.folder_path_label.setToolTip(str(current))
+            at_root = current == self.folder_root
+            self.folder_up_button.setEnabled(not at_root)
+            rows = []
+            if not at_root:
+                rows.append((current.parent, tr("..（上のフォルダー）"), "folder_up"))
+            rows.extend((folder, folder.name, "folder") for folder in subfolders(current))
         for folder, text, glyph in rows:
             item = QListWidgetItem(icon(glyph, "text_muted"), text)
             item.setData(FOLDER_ROLE, str(folder))
-            item.setToolTip(tr("{folder}\nクリックで開く · 画像をドロップすると移動").format(folder=folder))
+            item.setToolTip(tr("クリックで開く") if archive else tr("{folder}\nクリックで開く · 画像をドロップすると移動").format(folder=folder))
             self.folder_list.addItem(item)
         row_height = max(24, self.folder_list.sizeHintForRow(0)) if rows else 0
         self.folder_list.setFixedHeight(min(len(rows), 4) * row_height + 4 if rows else 0)
@@ -166,6 +176,10 @@ class FolderFeatures:
         for widget in (self.folder_list, self.new_folder_button):
             widget.setEnabled(idle)
         self.reload_folder_button.setEnabled(idle and bool(self.workspace_inputs))
+        if self.archive is not None:
+            self.folder_up_button.setEnabled(idle and bool(self.archive_folder))
+            self.new_folder_button.setEnabled(False)
+            return
         current = self.browsed_folder()
         self.folder_up_button.setEnabled(idle and current is not None and current != self.folder_root)
 
@@ -182,6 +196,7 @@ class FolderFeatures:
         if current is not None and self.folder_root is not None and current != self.folder_root:
             self.open_folder_in_tab(current.parent)
 
+    @writes_files
     def create_subfolder(self, move_paths=None):
         current = self.browsed_folder()
         if current is None or self.busy() or self.saving:
@@ -225,6 +240,7 @@ class FolderFeatures:
         folder = Path(folder).resolve()
         self.move_to_folders({path: folder for path in paths})
 
+    @writes_files
     def move_to_folders(self, targets, create=False):
         """Move each image into its folder ({path: folder}); ``create`` makes missing folders."""
         if self.busy() or self.saving:
@@ -298,6 +314,7 @@ class FolderFeatures:
 
         self.run_job(work, done, fail)
 
+    @writes_files
     def move_labelled(self, groups, destinations, names=None):
         """Move each label's images ({label: [path]}) into its folder ({label: folder}), as they are.
 
@@ -388,6 +405,7 @@ class FolderFeatures:
             folder = self.document.path.parent
         return folder
 
+    @writes_files
     def clip_files(self, cut=False):
         """Ctrl+C / Ctrl+X in the list: the selected image files (or the shown one) on the clipboard."""
         from PySide6.QtWidgets import QApplication
@@ -408,6 +426,9 @@ class FolderFeatures:
         paths, cut = clipboard_files(QApplication.clipboard().mimeData())
         if not paths:
             return False
+        if self.archive is not None:
+            self.info(tr("ZIPの中には貼り付けられません（読み取り専用）。"))
+            return True
         if self.busy() or self.saving:
             return True
         folder = self.paste_folder()
@@ -476,6 +497,7 @@ class FolderFeatures:
         root, found = label_folders(folder)
         return (root, found) if found else None
 
+    @writes_files
     def merge_label_folders(self):
         """Gather the images of the label folders (採用・保留・不採用) into one folder."""
         from .output_dialogs import MergeLabelFoldersDialog
