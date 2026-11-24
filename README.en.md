@@ -21,12 +21,12 @@ On the first start, choose whether to overwrite the originals or save to a separ
 
 ## Features
 
-- Hide with mosaic, blur or fill (brush, rectangle, ellipse, polygon, lasso)
+- Hide with mosaic, blur or fill (brush, rectangle, ellipse, polygon, lasso). The mosaic can follow 1/100 of the longer side, and a processed area can be copied to other images
 - Add text (choose the font, size and colour; move, rotate, resize and rewrite it afterwards)
 - View, remove and restore metadata (including NovelAI's Stealth PNGInfo and the C2PA added by ChatGPT and others)
 - Sort with Accept / Hold / Reject labels and tags (tags you use often, such as “Needs fixing”, as buttons), and into a folder per label
 - Tabs, moving between folders, numbered renaming, duplicate removal, side-by-side comparison
-- Format conversion, file size reduction, collages
+- Format conversion, file size reduction (with an optional size limit), export with a watermark or signature, collages
 - Crop, rotate, colour adjustment, upscaling
 - Hand images without metadata to NovelAI or other apps
 - View and sort the images in a ZIP without extracting it, and export only the chosen ones (the ZIP is not changed)

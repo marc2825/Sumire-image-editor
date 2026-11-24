@@ -27,6 +27,8 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | What you want | Where |
 | --- | --- |
 | Hide part of an image | Mosaic, Blur or Fill in the right panel. Areas: Brush, Rectangle, Ellipse, Polygon, Lasso |
+| Size the mosaic to the image | “1/100 of long side” under the mosaic strength. Sets each block to 1/100 of the longer side (rounded up), again for every image while on |
+| Hide the same place on other images | “Copy the processed area to other images…” in “⋯” or the right-click menu. Processes the same place on the selected images (or the other images in the list) and saves them |
 | Add text | Choose “Text” (T) in the right panel and click the image. Font, size, colour and bold can be chosen. Afterwards, move, rotate and resize it with its box, and double-click to rewrite |
 | Undo edits | Undo / Redo, the Eraser, “Reset edits and mask” |
 | See what was edited | “Mask” below the image. It can also be saved as a black-and-white PNG (“⋯ → More”) |
@@ -65,6 +67,8 @@ If you are new, start with [Getting started](USER_GUIDE.md).
 | Save under another name | “Save as” in “⋯” or the image's right-click menu |
 | Change the format | Right-click → “Convert format” (for the whole list, “Export and batch” below the list) |
 | Make files smaller | Right-click → “Reduce file size”. Shows how much smaller they get before writing. Images whose format stays the same can also overwrite the originals |
+| Export within a file size limit | “File size limit” in “Convert format” and “Reduce file size”. Lowers the quality, then makes the image smaller if needed |
+| Export with a watermark or signature | “Add a watermark or signature” in “Convert format” and “Reduce file size”. A text or a signature image in a corner, the centre or repeated across (the originals get none) |
 | Combine images | Select images, right-click → “Make a collage” (from one image). Grid or free layout; each image can be cropped |
 | Copy the result or open a pasted image | Ctrl+C copies the result, Ctrl+V opens the clipboard image in a new tab |
 | Continue editing later | “File → Save edit project with the original” |

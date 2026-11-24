@@ -36,6 +36,8 @@ Choose Mosaic, Blur or Fill in the right panel and trace over what you want to h
 - Compare: hold “Compare” below the image, or Tab, to see the original.
 - Mask: tints the edited areas (the tint is not saved).
 - Reset edits and mask: removes all edits. Ctrl+Z undoes it.
+- 1/100 of long side (with Mosaic): sets each mosaic block to 1/100 of the image's longer side (rounded up). While on, it is set again for every image; changing the strength by hand turns it off.
+- Copy the processed area to other images (“⋯” or the right-click menu): the area processed on the shown image is copied to the same place on the selected images (or the other images in the list), processed with Mosaic, Blur or Fill, and saved. On images of other sizes it goes to the same relative position.
 
 To add text, choose “Text” (T) and click the image. In the window that opens, choose the text, font, size, colour and bold, and see the result on the image. The point you click becomes the top left of the text.
 
@@ -132,6 +134,8 @@ Converting and reducing file size are in the right-click menu (for the whole lis
 - The originals stay; new files go into a new folder.
 - Reducing size shows the result first, for example “Original 3.2 MB → Compressed 740 KB (77% smaller)”.
 - With “Overwrite the originals” in Reduce file size, only images whose format stays the same are replaced (the originals are kept until the app closes).
+- File size limit: with a limit per image (KB), a lossy format lowers its quality, then the image is made smaller if it still does not fit.
+- Add a watermark or signature: a text or a signature image in a corner, the centre or repeated across (diagonal). Its size is a share of the longer side, with a preview. Only the exported images get it; the originals do not change.
 
 With two or more images selected, the right-click menu offers “Compare side by side” (up to 6). “Make a collage” works from one image; arrange images in a grid or freely, and double-click one to crop it.
 
