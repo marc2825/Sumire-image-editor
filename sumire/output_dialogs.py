@@ -3,16 +3,18 @@ from __future__ import annotations
 from .i18n import tr
 
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QSize, QThreadPool, QTimer, Qt
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QIcon, QImage, QPixmap, QStandardItemModel
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QRadioButton, QScrollArea, QSlider, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from .collage import MAX_COLLAGE, CollageSpec, FreeLayout, check_canvas, collage_layouts, render_collage, render_free_collage
-from .convert import Encoding, TARGETS, encode, size_summary, writable
+from .convert import Encoding, TARGETS, encode, prepared_pixels, size_summary, writable
+from .watermark import MAX_SIZE as MARK_MAX, MIN_SIZE as MARK_MIN, POSITIONS, Watermark, preview as watermark_preview
 from .editing import UPSCALE_FACTORS, upscaled_size
 from .imaging import HEIF_PLUGIN, MAX_DIMENSION, ImageProblem
 from .organize import sequence_stems
@@ -332,7 +334,8 @@ class ConvertDialog(QDialog):
     first image; its result is encoded in the background to show the real size.
     """
 
-    def __init__(self, mode, count, parent_folder, sample, *, backup=True, source_format=None, keep_originals=True, parent=None):
+    def __init__(self, mode, count, parent_folder, sample, *, backup=True, source_format=None, keep_originals=True,
+                 watermark: Watermark | None = None, watermark_on=False, size_limit_kb=2048, size_limit_on=False, parent=None):
         super().__init__(parent)
         self.mode = mode
         self.count = count
@@ -387,7 +390,7 @@ class ConvertDialog(QDialog):
             for format, (label, extension) in TARGETS.items():
                 self.format_combo.addItem(tr("{label}（{extension}） · {CONVERT_NOTES}").format(label=label, extension=extension, CONVERT_NOTES=CONVERT_NOTES[format]), format)
                 if not writable(format):
-                    item = self.format_combo.model().item(self.format_combo.count() - 1)
+                    item = cast(QStandardItemModel, self.format_combo.model()).item(self.format_combo.count() - 1)
                     item.setEnabled(False)
                     item.setToolTip(tr("HEICは、ライセンスの都合で同梱していないため書き出せません。")
                                     if not HEIF_PLUGIN else tr("導入済みのHEIFモジュールは読み込み専用です。"))
@@ -420,6 +423,24 @@ class ConvertDialog(QDialog):
         resize_row.addWidget(self.max_side)
         resize_row.addStretch(1)
         layout.addLayout(resize_row)
+        # A cap on the file size (for sites with an upload limit).
+        limit_row = QHBoxLayout()
+        self.size_limit = QCheckBox(tr("ファイルサイズの上限"))
+        limit_row.addWidget(self.size_limit)
+        self.size_limit_value = QSpinBox()
+        self.size_limit_value.setRange(10, 1024 * 1024)
+        self.size_limit_value.setSingleStep(100)
+        self.size_limit_value.setSuffix(" KB")
+        self.size_limit_value.setValue(max(10, min(1024 * 1024, int(size_limit_kb))))
+        self.size_limit_value.setAccessibleName(tr("ファイルサイズの上限（KB）"))
+        limit_row.addWidget(self.size_limit_value)
+        limit_row.addStretch(1)
+        layout.addLayout(limit_row)
+        self.size_limit_note = faint(tr("上限を超えるときは、非可逆の形式なら画質を下げ、それでも大きければ画像を縮小します。1MB = 1024KB。"))
+        self.size_limit_note.setContentsMargins(26, 0, 0, 0)
+        layout.addWidget(self.size_limit_note)
+        self.size_limit.setChecked(size_limit_on)
+        self.build_watermark(layout, watermark or Watermark(), watermark_on)
         layout.addWidget(QLabel(tr("保存先")))
         self.chooser = DestinationChooser(parent_folder, tr("圧縮済み") if compress else tr("変換済み"), self)
         layout.addWidget(self.chooser)
@@ -439,6 +460,12 @@ class ConvertDialog(QDialog):
         self.estimate.setObjectName("estimate")
         self.estimate.setWordWrap(True)
         outer.addWidget(self.estimate)
+        self.preview = QLabel()
+        self.preview.setObjectName("editPreview")
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview.setAccessibleName(tr("透かしの見本"))
+        self.preview.hide()
+        outer.addWidget(self.preview)
         self.problem = QLabel()
         self.problem.setObjectName("danger")
         self.problem.setWordWrap(True)
@@ -449,7 +476,7 @@ class ConvertDialog(QDialog):
         content.adjustSize()
         self.resize(max(620, content.sizeHint().width() + 40),
                     min(content.sizeHint().height() + 150, available.height() - 80))
-        self.last_quality = {}
+        self.last_quality: dict[str, int] = {}
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         self.timer.setInterval(250)
@@ -461,6 +488,13 @@ class ConvertDialog(QDialog):
         self.quality.valueChanged.connect(self.quality_changed)
         self.shrink.toggled.connect(self.settings_changed)
         self.max_side.valueChanged.connect(self.settings_changed)
+        self.size_limit.toggled.connect(self.settings_changed)
+        self.size_limit_value.valueChanged.connect(self.settings_changed)
+        for signal in (self.mark_on.toggled, self.mark_text.textChanged, self.mark_position.currentIndexChanged,
+                       self.mark_size.valueChanged, self.mark_opacity.valueChanged, self.mark_color.currentIndexChanged,
+                       self.mark_shadow.toggled):
+            signal.connect(self.settings_changed)
+        self.mark_on.toggled.connect(self.refresh_problem)
         self.chooser.name.textChanged.connect(self.refresh_problem)
         self.chooser.group.buttonToggled.connect(self.refresh_problem)
         self.chooser.browse.clicked.connect(self.refresh_problem)
@@ -481,7 +515,92 @@ class ConvertDialog(QDialog):
         base = self.base_encoding()
         quality = self.quality.value() if base.quality is not None else None
         return Encoding(base.format, quality=quality, lossless=base.lossless, colors=base.colors,
-                        max_side=self.max_side.value() if self.shrink.isChecked() else None)
+                        max_side=self.max_side.value() if self.shrink.isChecked() else None,
+                        max_bytes=self.size_limit_value.value() * 1024 if self.size_limit.isChecked() else None,
+                        watermark=self.watermark() if self.mark_on.isChecked() else None)
+
+    # --- watermark and signature ---------------------------------------------------------------
+
+    def build_watermark(self, layout, mark: Watermark, on: bool):
+        self.mark_on = QCheckBox(tr("透かし・署名を入れる"))
+        self.mark_on.setToolTip(tr("書き出す画像にだけ入れます。元画像と、Sumīreで開いている画像は変わりません。"))
+        layout.addWidget(self.mark_on)
+        self.mark_box = QWidget()
+        form = QFormLayout(self.mark_box)
+        form.setContentsMargins(26, 0, 0, 0)
+        form.setSpacing(6)
+        self.mark_text = QLineEdit(mark.text)
+        self.mark_text.setMaxLength(200)
+        self.mark_text.setPlaceholderText(tr("例：© 2026 名前"))
+        form.addRow(tr("文字"), self.mark_text)
+        image_row = QHBoxLayout()
+        self.mark_image = mark.image
+        self.mark_image_label = ElidedLabel()
+        self.mark_image_label.setObjectName("muted")
+        image_row.addWidget(self.mark_image_label, 1)
+        choose = QPushButton(tr("選ぶ…"))
+        choose.clicked.connect(self.choose_signature)
+        image_row.addWidget(choose)
+        self.mark_image_clear = QPushButton(tr("外す"))
+        self.mark_image_clear.clicked.connect(lambda: self.set_signature(None))
+        image_row.addWidget(self.mark_image_clear)
+        form.addRow(tr("署名の画像"), image_row)
+        self.mark_position = QComboBox()
+        for key, text in POSITIONS.items():
+            self.mark_position.addItem(text, key)
+        self.mark_position.setCurrentIndex(max(0, self.mark_position.findData(mark.position)))
+        form.addRow(tr("位置"), self.mark_position)
+        self.mark_size = QSpinBox()
+        self.mark_size.setRange(MARK_MIN, MARK_MAX)
+        self.mark_size.setValue(mark.size)
+        self.mark_size.setSuffix(" %")
+        self.mark_size.setToolTip(tr("透かしの高さを、画像の長辺に対する割合で指定します。"))
+        form.addRow(tr("大きさ（長辺に対して）"), self.mark_size)
+        self.mark_opacity = QSpinBox()
+        self.mark_opacity.setRange(5, 100)
+        self.mark_opacity.setValue(mark.opacity)
+        self.mark_opacity.setSuffix(" %")
+        form.addRow(tr("不透明度"), self.mark_opacity)
+        self.mark_color = QComboBox()
+        for text, value in ((tr("白"), "#ffffff"), (tr("黒"), "#000000"), (tr("灰色"), "#808080")):
+            self.mark_color.addItem(text, value)
+        if self.mark_color.findData(mark.color) < 0:
+            self.mark_color.addItem(mark.color, mark.color)
+        self.mark_color.setCurrentIndex(self.mark_color.findData(mark.color))
+        form.addRow(tr("文字の色"), self.mark_color)
+        self.mark_shadow = QCheckBox(tr("影を付けて読みやすくする"))
+        self.mark_shadow.setChecked(mark.shadow)
+        form.addRow("", self.mark_shadow)
+        layout.addWidget(self.mark_box)
+        layout.addWidget(faint(tr("署名の画像があるときは、文字の代わりに画像を入れます。透明な背景のPNGがおすすめです。")))
+        self.set_signature(mark.image, refresh=False)
+        self.mark_on.setChecked(on)
+        self.mark_box.setEnabled(on)
+        self.mark_on.toggled.connect(self.mark_box.setEnabled)
+
+    def choose_signature(self):
+        path, _ = QFileDialog.getOpenFileName(self, tr("署名の画像を選ぶ"), str(Path(self.mark_image).parent) if self.mark_image else "",
+                                              tr("画像 (*.png *.webp *.jpg *.jpeg *.bmp *.tif *.tiff *.gif)"))
+        if path:
+            self.set_signature(path)
+
+    def set_signature(self, path, refresh=True):
+        self.mark_image = path or None
+        self.mark_image_label.setText(Path(path).name if path else tr("なし（文字を入れます）"))
+        self.mark_image_clear.setEnabled(bool(path))
+        self.mark_text.setEnabled(not path)
+        self.mark_color.setEnabled(not path)
+        if refresh:
+            self.settings_changed()
+
+    def watermark(self) -> Watermark:
+        return Watermark(text=self.mark_text.text(), image=self.mark_image, position=self.mark_position.currentData(),
+                         size=self.mark_size.value(), opacity=self.mark_opacity.value(), color=self.mark_color.currentData(),
+                         shadow=self.mark_shadow.isChecked())
+
+    def watermark_settings(self):
+        """(settings, on) to remember for the next export."""
+        return self.watermark().to_settings(), self.mark_on.isChecked()
 
     def option_changed(self):
         base = self.base_encoding()
@@ -516,15 +635,21 @@ class ConvertDialog(QDialog):
         def work(cancel):
             if self.pixels is None:
                 self.pixels = self.sample_pixels()
-            return len(encode(self.pixels, encoding))
+            size = len(encode(self.pixels, encoding))
+            mark = encoding.watermark
+            picture = watermark_preview(prepared_pixels(self.pixels, Encoding(max_side=encoding.max_side)), mark, 240) \
+                if mark is not None and not mark.empty else None
+            return size, picture
         job = self.job = Job(work)
-        job.signals.done.connect(lambda size: self.show_estimate(generation, size))
-        job.signals.failed.connect(lambda message: self.show_estimate(generation, None, message))
+        job.signals.done.connect(lambda result: self.show_estimate(generation, *result))
+        job.signals.failed.connect(lambda message: self.show_estimate(generation, None, None, message))
         self.pool.start(job)
 
-    def show_estimate(self, generation, size, message=""):
+    def show_estimate(self, generation, size, picture=None, message=""):
         if generation != self.generation:
             return
+        if size is not None:
+            self.show_preview(picture)
         encoding = self.encoding()
         kind = tr("非可逆（画質が変わる可能性があります）") if encoding.lossy else tr("可逆（画質は変わりません）")
         if size is None:
@@ -533,6 +658,17 @@ class ConvertDialog(QDialog):
         label = tr("圧縮後") if self.mode == "compress" else tr("変換後")
         prefix = tr("1枚目（{sample_name}）の試算：").format(sample_name=self.sample_name) if self.count > 1 else ""
         self.estimate.setText(f"{kind}\n{prefix}{size_summary(self.sample_size, size, label)}")
+
+    def show_preview(self, picture):
+        """The first image with the watermark, small, so its place and size can be judged."""
+        if picture is None:
+            self.preview.hide()
+            return
+        data = picture.convert("RGBA")
+        image = QImage(data.tobytes(), data.width, data.height, data.width * 4, QImage.Format.Format_RGBA8888).copy()
+        self.preview.setPixmap(QPixmap.fromImage(image))
+        self.preview.setFixedHeight(data.height + 12)
+        self.preview.show()
 
     def replace_originals(self) -> bool:
         return self.mode == "compress" and self.replace.isChecked()
@@ -547,6 +683,8 @@ class ConvertDialog(QDialog):
                                          else tr("置き換える前の元画像は残りません。")))
         self.replace_note.setVisible(replace)
         problem = "" if replace else self.chooser.problem()
+        if replace and self.mark_on.isChecked():
+            problem = tr("透かしを入れるときは、元画像に上書きできません。新しいフォルダーへ書き出してください。")
         self.problem.setText(problem)
         self.ok.setEnabled(not problem)
 
@@ -560,6 +698,79 @@ class ConvertDialog(QDialog):
         self.timer.stop()
         self.pool.waitForDone()
         super().done(result)
+
+
+class CopyAreaDialog(QDialog):
+    """「加工の範囲をほかの画像へ写す」: which images, which tool, and how the area is placed.
+
+    ``targets`` is [(key, title, paths)] (the selected images, the images in the list…);
+    ``picture`` and ``mask`` are the shown image and its processed area, for the preview.
+    """
+
+    def __init__(self, targets, picture, mask, mode, tools, save_text, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tr("加工の範囲をほかの画像へ写す"))
+        self.setMinimumWidth(520)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+        intro = QLabel(tr("表示中の画像で加工した範囲（マスクの範囲）を、ほかの画像の同じ場所に写して加工し、保存します。"))
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        preview = QLabel()
+        preview.setObjectName("editPreview")
+        preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview.setPixmap(QPixmap.fromImage(area_picture(picture, mask)))
+        preview.setAccessibleName(tr("写す範囲"))
+        layout.addWidget(preview)
+        form = QFormLayout()
+        form.setSpacing(8)
+        self.target_group = QButtonGroup(self)
+        target_box = QVBoxLayout()
+        self.targets = {}
+        for key, title, paths in targets:
+            button = QRadioButton(tr("{title}（{count}枚）").format(title=title, count=len(paths)))
+            button.setEnabled(bool(paths))
+            self.target_group.addButton(button)
+            self.targets[key] = (button, paths)
+            target_box.addWidget(button)
+        first = next((button for button, paths in self.targets.values() if paths), None)
+        if first is not None:
+            first.setChecked(True)
+        form.addRow(tr("写す先"), target_box)
+        self.tool = QComboBox()
+        for key, text in tools:
+            self.tool.addItem(text, key)
+        self.tool.setCurrentIndex(max(0, self.tool.findData(mode)))
+        form.addRow(tr("加工"), self.tool)
+        self.placement = QComboBox()
+        self.placement.addItem(tr("画像の大きさに合わせる（同じ割合の位置）"), "relative")
+        self.placement.addItem(tr("同じ画素の位置（左上をそろえる）"), "pixels")
+        self.placement.setToolTip(tr("大きさの違う画像では、「画像の大きさに合わせる」で範囲も同じ割合で伸び縮みします。"))
+        form.addRow(tr("位置"), self.placement)
+        layout.addLayout(form)
+        layout.addWidget(faint(save_text))
+        buttons, self.ok = dialog_buttons(self, tr("写して保存する"))
+        self.ok.setEnabled(first is not None)
+        layout.addWidget(buttons)
+
+    def chosen(self):
+        """(paths, tool mode, placement)."""
+        paths = next((paths for button, paths in self.targets.values() if button.isChecked()), [])
+        return list(paths), self.tool.currentData(), self.placement.currentData()
+
+
+def area_picture(picture, mask, longest=360):
+    """The shown image, small, with its processed area tinted in the accent colour."""
+    from PIL import Image as PILImage
+    from .theme import TOKENS
+    scale = min(1.0, longest / max(picture.size))
+    size = (max(1, round(picture.width * scale)), max(1, round(picture.height * scale)))
+    small = picture.convert("RGBA").resize(size, PILImage.Resampling.LANCZOS)
+    area = mask.resize(size, PILImage.Resampling.NEAREST).point(lambda value: 150 if value else 0)
+    tint = PILImage.new("RGBA", size, TOKENS["accent"])
+    tint.putalpha(area)
+    small.alpha_composite(tint)
+    return QImage(small.tobytes(), small.width, small.height, small.width * 4, QImage.Format.Format_RGBA8888).copy()
 
 
 class UpscaleDialog(QDialog):

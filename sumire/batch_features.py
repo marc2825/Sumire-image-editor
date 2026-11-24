@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
 from .export import Cancelled, available_target, check_cancel, detect_format, file_digest, kept_format, save_image
-from .imaging import ImageProblem, load_image
+from .imaging import ImageProblem, clean_pixels, load_image
 from .masks import MaskStore
 from .session import Receipts, source_key
 from .ui import fact_table, html_text
@@ -64,11 +64,15 @@ class BatchFeatures:
         dialog.setEscapeButton(QMessageBox.StandardButton.Cancel)
         return self.confirm_dialog(dialog)
 
-    def _start_batch(self, paths=None, export_folder=None, names=None, format=None):
+    def _start_batch(self, paths=None, export_folder=None, names=None, format=None, transform=None, done_text=None):
         """Save or export ``paths``; ``names`` maps a path to a new file stem and
         ``format="SOURCE"`` keeps each PNG / JPEG / WebP format (others become PNG).
 
-        ``export_folder`` is one folder, or {path: folder} to export into several."""
+        ``export_folder`` is one folder, or {path: folder} to export into several.
+
+        ``transform(image, mask) -> (image, mask, changed)`` edits each image (as it stands, with its
+        saved edits) before it is saved the usual way; the metadata then follows the save settings
+        instead of being removed, and ``done_text`` names the work in the result."""
         paths = list(self.model.paths if paths is None else paths)
         if export_folder is None and any(self.is_clipboard_path(path) and
                 (path not in self.documents or self.documents[path].output is None) for path in paths):
@@ -86,6 +90,7 @@ class BatchFeatures:
         jpeg_quality = self.jpeg_quality
         overwrite = self.overwrite.isChecked() and export_folder is None
         keep_original = originals().keep if overwrite and self.keep_originals.isChecked() else None
+        keep_metadata = transform is not None and not self.strip_metadata.isChecked()
         # Keep cached edits and reload verified outputs for other saved images.
         snapshots = {path: doc.image.copy() for path, doc in self.documents.items()}
         mask_snapshots = {path: doc.edit_mask.copy() for path, doc in self.documents.items()}
@@ -95,7 +100,7 @@ class BatchFeatures:
         geometry_snapshots = {path: list(doc.geometry_steps) for path, doc in self.documents.items()}
         geometry_digests = {path: doc.geometry_source_digest for path, doc in self.documents.items()}
         self.canvas.ready = False
-        self.info(tr("保存済みを含む全画像を1枚ずつ処理中…"))
+        self.info(tr("保存済みを含む全画像を1枚ずつ処理中…") if transform is None else tr("1枚ずつ加工して保存中…"))
         indexes = {}
 
         def process(cancel, report):
@@ -148,6 +153,9 @@ class BatchFeatures:
                     if mask is None:
                         prior_digest = image_digest or owned_digest or source_digest or file_digest(path)
                         mask = MaskStore(path.parent).get(path, prior_digest, image.size)
+                    if transform is not None:
+                        image, mask, changed = transform(clean_pixels(image), mask)
+                        edited = edited or changed
                     if target is None:
                         target = available_target(export_folders[path] if export_folders else folder,
                                                   names.get(path, path.stem) if names else path.stem, format)
@@ -155,7 +163,7 @@ class BatchFeatures:
                     result = save_image(image, target, source=path, format=source_format if overwrite else format, cancel=cancel,
                                         owned_digest=owned_digest, overwrite_source=overwrite, source_digest=source_digest,
                                         backup_metadata=backup_metadata and path not in project_paths, jpeg_quality=jpeg_quality,
-                                        backup=keep_original)
+                                        backup=keep_original, keep_metadata=keep_metadata)
                     saved.append((path, result))
                     try:
                         index.record(path, result, previous_key=previous_key, edited=edited)
@@ -196,7 +204,14 @@ class BatchFeatures:
             for path, output in saved:
                 self.owned[output.path] = output.digest
                 document = self.documents.get(path)
-                self.model.state(path, "書出済み · メタデータ：無し" if export_folder else "未編集 · 保存済み · メタデータ：無し" if saved_states[path] is False else "保存済み · メタデータ：無し")
+                metadata = "メタデータ：有り" if output.metadata_kept else "メタデータ：無し"
+                self.model.state(path, f"書出済み · {metadata}" if export_folder else f"未編集 · 保存済み · {metadata}"
+                                 if saved_states[path] is False else f"保存済み · {metadata}")
+                if transform is not None and path in self.documents and document is not self.document:
+                    # Its pixels changed on disk: read them again when it is shown.
+                    self.documents.pop(path)
+                    self.model.cache.pop(path, None)
+                    continue
                 if document and export_folder is None:
                     document.output = output.path
                     document.saved_revision = document.revision
@@ -206,7 +221,9 @@ class BatchFeatures:
                     self.model.cache.pop(path, None)
             for path in failed:
                 self.model.state(path, "保存失敗")
-            self.info(tr("{value} · 保存 {count} / 失敗 {count2}").format(value=tr('一括処理を中止') if cancelled else tr('一括処理完了'), count=len(saved), count2=len(failed)))
+            title = (tr('一括処理を中止') if cancelled else tr('一括処理完了')) if done_text is None else \
+                (tr("中止しました") if cancelled else done_text)
+            self.info(tr("{value} · 保存 {count} / 失敗 {count2}").format(value=title, count=len(saved), count2=len(failed)))
             if failed:
                 self.show_text_window(tr("保存できなかった画像"), "\n\n".join(f"{path}\n{reason}" for path, reason in failed.items()))
             if receipt_failures:

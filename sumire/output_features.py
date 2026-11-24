@@ -16,6 +16,9 @@ from .imaging import load_image
 from .export import available_target, check_cancel, detect_format, file_digest
 from .imaging import ImageProblem
 from .ui import fact_table, html_text
+from .watermark import POSITIONS, Watermark
+from .area_copy import apply_area, placed_mask
+from .imaging import Tool
 from .archive_features import writes_files
 
 SAVE_AS_QUALITY = {"JPEG": None, "AVIF": 80, "HEIF": 80}
@@ -23,6 +26,52 @@ SAVE_AS_QUALITY = {"JPEG": None, "AVIF": 80, "HEIF": 80}
 
 class OutputFeatures:
     # --- conversion and compression -------------------------------------------------
+    @writes_files
+    def copy_area_to_images(self):
+        """Process the shown image's edited area on other images too, and save them."""
+        document = self.document
+        if document is None or self.busy() or self.saving:
+            return
+        if document.edit_mask.getbbox() is None:
+            self.info(tr("写せる加工の範囲がありません。モザイク・ぼかし・塗りつぶしで加工した範囲を写します。"))
+            return
+        from .output_dialogs import CopyAreaDialog
+        current = document.path
+        usable = lambda path: path != current and path in self.model.rows and not self.is_clipboard_path(path)
+        selected = [path for path in self.selected_paths() if usable(path)]
+        visible = [path for path in self.visible_paths() if usable(path)]
+        overwrite = self.overwrite.isChecked()
+        if overwrite:
+            save_text = tr("元画像に上書きして保存します。") + (
+                tr("上書き前の元画像はアプリの終了まで残り、「上書き前に戻す」で1枚ずつ戻せます。") if self.keep_originals.isChecked()
+                else tr("上書き前の元画像は残りません。"))
+        else:
+            save_text = tr("別フォルダー（{folder}）に保存します。元画像は変わりません。").format(folder=self.output_folder)
+        save_text += tr("メタデータは保存方法の設定どおりです。")
+        tools = [("mosaic", tr("モザイク")), ("blur", tr("ぼかし")), ("fill", tr("塗りつぶし"))]
+        dialog = CopyAreaDialog([("selected", tr("選択中の画像"), selected), ("visible", tr("一覧に表示中のほかの画像"), visible)],
+                                document.image, document.edit_mask, self.mode if self.mode in ("mosaic", "blur", "fill") else "mosaic",
+                                tools, save_text, self)
+        if not self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted) or self.busy() or self.saving:
+            return
+        paths, mode, how = dialog.chosen()
+        paths = [path for path in paths if path in self.model.rows]
+        if not paths:
+            return
+        area = document.edit_mask.copy()
+        strengths = {**self.mode_strengths, self.mode: self.strength.value()}
+        fit = self.mosaic_fit.isChecked()
+        color = self.color
+        block_for = self.mosaic_block_for
+
+        def transform(image, mask):
+            # With 「長辺の1/100」 on, each image gets its own block size.
+            strength = block_for(image.size) if mode == "mosaic" and fit else strengths[mode]
+            tool = Tool(mode, strength=strength, color=color, opacity=strengths["fill"] if mode == "fill" else 100)
+            return apply_area(image, mask, placed_mask(area, image.size, how), tool)
+
+        self.guard(lambda: self._start_batch(paths=paths, transform=transform, done_text=tr("加工の範囲を写しました")))
+
     @writes_files
     def convert_images(self, paths, mode):
         """``mode`` is "convert" (format) or "compress" (size); originals are never changed."""
@@ -37,11 +86,26 @@ class OutputFeatures:
         except OSError:
             original_size = 0
         source = (sample.name, original_size, (lambda: snapshot) if snapshot is not None else (lambda: self.review_pixels(sample)))
+        # The watermark and the size cap are remembered for the next export (all tabs share them).
+        remembered = self.preferences.data.get("export", {})
+        remembered = remembered if isinstance(remembered, dict) else {}
+        limit = remembered.get("size_limit_kb")
         dialog = ConvertDialog(mode, len(paths), self.default_new_folder_parent(paths), source,
                                backup=self.metadata_backup.isChecked(), source_format=detect_format(sample),
-                               keep_originals=self.keep_originals.isChecked(), parent=self)
+                               keep_originals=self.keep_originals.isChecked(),
+                               watermark=Watermark.from_settings(remembered.get("watermark")),
+                               watermark_on=remembered.get("watermark_on") is True,
+                               size_limit_kb=limit if type(limit) is int and 10 <= limit <= 1024 * 1024 else 2048,
+                               size_limit_on=remembered.get("size_limit_on") is True, parent=self)
         if not self.confirm_dialog(dialog, accepted=QDialog.DialogCode.Accepted) or self.busy() or self.saving:
             return
+        mark, mark_on = dialog.watermark_settings()
+        try:
+            self.preferences.save({**self.preferences.data, "export": {
+                "watermark": mark, "watermark_on": mark_on, "size_limit_kb": dialog.size_limit_value.value(),
+                "size_limit_on": dialog.size_limit.isChecked()}})
+        except OSError:
+            pass  # only a convenience for next time
         try:
             folder = dialog.destination()
             encoding = dialog.encoding()
@@ -150,6 +214,8 @@ class OutputFeatures:
         rows = [(tr("対象"), tr("{count}枚").format(count=len(staged))),
                 (tr("形式"), tr("{name}（{quality}{value}）").format(name=name, quality=quality, value=tr('非可逆') if encoding.lossy else tr('可逆'))),
                 (tr("縮小"), tr("長辺を{max_side}px以下に").format(max_side=encoding.max_side) if encoding.max_side else ""),
+                (tr("サイズの上限"), tr("1枚{limit}以下").format(limit=format_bytes(encoding.max_bytes)) if encoding.max_bytes else ""),
+                (tr("透かし・署名"), mark_summary(encoding.watermark)),
                 (tr("保存先"), tr("元画像に上書き（同じ場所・名前）") if replace else str(folder)),
                 (tr("元画像"), (tr("置き換える（アプリの終了まで残し、「上書き前に戻す」で戻せる）") if self.keep_originals.isChecked()
                                 else tr("置き換える（元のファイルは残らない）")) if replace else tr("変更しない")),
@@ -391,3 +457,11 @@ class OutputFeatures:
     @staticmethod
     def describe_bytes(size):
         return format_bytes(size)
+
+
+def mark_summary(mark):
+    """「右下 ·「© 2026 名前」」 for the confirmation; empty when there is no mark."""
+    if mark is None or mark.empty:
+        return ""
+    what = Path(mark.image).name if mark.image else tr("「{text}」").format(text=mark.text.strip())
+    return f"{POSITIONS.get(mark.position, '')} · {what}"

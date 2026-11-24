@@ -288,6 +288,7 @@ class Workbench:
             ("collage", tr("コラージュを作成…"), self.make_collage),
             ("merge_labels", tr("ラベルのフォルダーをまとめる…"), self.merge_label_folders),
             ("export_archive", tr("ZIPから書き出す…"), self.export_from_archive),
+            ("copy_area", tr("加工の範囲をほかの画像へ写す…"), self.copy_area_to_images),
         ]
         for key, text, callback in actions:
             action = QAction(text, self)
@@ -298,6 +299,7 @@ class Workbench:
         self.workflow_actions["save_as"].setToolTip(tr("表示中の画像を、名前・形式を指定して新しいファイルに保存します（メタデータなし）。"))
         self.workflow_actions["duplicates"].setToolTip(tr("内容が完全に同じ画像を探し、残す1枚を選んで残りをごみ箱へ移します。実行前に確認します。"))
         self.workflow_actions["collage"].setToolTip(tr("選択した画像（1枚から）を、並べ方を選んで1枚にまとめます。画像はあとから追加できます。"))
+        self.workflow_actions["copy_area"].setToolTip(tr("表示中の画像で加工した範囲を、選んだ画像や一覧のほかの画像の同じ場所に写して加工し、保存します。"))
         self.workflow_actions["merge_labels"].setToolTip(tr("このタブのフォルダーにある採用・保留・不採用のフォルダーの画像を、1つのフォルダーに集めます。実行前に確認します。"))
         self.workflow_actions["reset_list"].setToolTip(tr("この起動中の上書きを元画像に戻し、表示中の画像の加工を消して、"
                                                       "ラベル・メモ・並び順・絞り込み・検索も解除します。実行前に確認します。"))
@@ -343,7 +345,8 @@ class Workbench:
         self.populate_move_menu(menu, self.selected_or_current())
         for item in (self.workflow_actions["save_as"], self.workflow_actions["save_selected"],
                      self.workflow_actions["convert_selected"], self.workflow_actions["compress_selected"], None,
-                     self.workflow_actions["compare"], self.workflow_actions["collage"], self.workflow_actions["number_selected"], None,
+                     self.workflow_actions["compare"], self.workflow_actions["collage"], self.workflow_actions["number_selected"],
+                     self.workflow_actions["copy_area"], None,
                      self.rename_button, self.workflow_actions["note"], self.workflow_actions["tags"], None,
                      self.workflow_actions["cut_files"], self.workflow_actions["copy_files"], self.workflow_actions["paste_files"], None,
                      self.workflow_actions["remove_selected"],
@@ -526,6 +529,9 @@ class Workbench:
                     "cut_files", "copy_files", "paste_files"):
             self.workflow_actions[key].setEnabled(ready and bool(selected or self.document))
         self.workflow_actions["save_as"].setEnabled(ready and self.document is not None)
+        # Something edited on the shown image, and other images to copy it to (the mask itself is checked on use).
+        self.workflow_actions["copy_area"].setEnabled(ready and self.document is not None and self.document.edited
+                                                      and len(self.model.paths) > 1)
         self.workflow_actions["collage"].setEnabled(ready and bool(selected or self.document))
         self.workflow_actions["note"].setEnabled(ready and self.document is not None)
         self.workflow_actions["tags"].setEnabled(ready and bool(selected or self.document))
@@ -1314,6 +1320,7 @@ class Workbench:
             "navigator": self.navigator_action.isChecked(),
             "text": self.text_style.to_settings(),
             # A panel folded only because the window was narrow is still one the user shows.
+            "mosaic_fit": self.mosaic_fit.isChecked(),
             "show_library": not self.library_panel.isHidden() or "library" in self.auto_folded,
             "show_tools": not self.tools_panel.isHidden() or "tools" in self.auto_folded,
         }
@@ -1391,6 +1398,8 @@ class Workbench:
                 if isinstance(value, int):
                     self.mode_strengths[mode] = max(0 if mode == "fill" else 2, min(100, value))
         self.strength.setValue(self.mode_strengths[self.mode])
+        if isinstance(data.get("mosaic_fit"), bool):
+            self.mosaic_fit.setChecked(data["mosaic_fit"])
         if "text" in data:
             self.text_style = TextStyle.from_settings(data["text"])
         color = data.get("color", "#000000")

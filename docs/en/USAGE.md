@@ -93,7 +93,7 @@ How saving works and what is checked is described in [Saving and privacy](SAVING
 
 ### Tools
 
-- Mosaic: the strength is the block size. `,` and `.` change it in 2 px steps.
+- Mosaic: the strength is the block size. `,` and `.` change it in 2 px steps. With “1/100 of long side” on, each block is 1/100 of the image's longer side (rounded up), set again for every image (changing the strength by hand turns it off).
 - Blur: the strength is the blur radius.
 - Fill: choose a colour and opacity (0–100%). At 100% the original pixels are replaced completely.
 - Eraser: returns traced areas to the original. Press it again (E) to go back to your tool.
@@ -115,6 +115,15 @@ How saving works and what is checked is described in [Saving and privacy](SAVING
 - “Mask” (M): tints the edited areas blue (the tint is not saved)
 - “Reset edits and mask”: removes all edits. Ctrl+Z undoes it.
 - Edit presets: save the tool, size, strength, colour, shape and area expansion under a name (in the right panel, under the sliders).
+
+### Copy the processed area to other images
+
+When several images share a layout (a signature in the same place, for example), the area processed on the shown image can be processed on other images too. Use “Copy the processed area to other images…” in “⋯” or the right-click menu.
+
+- Copy to: the selected images, or the other images shown in the list
+- Processing: Mosaic, Blur or Fill (with the current strength and colour; with “1/100 of long side” on, per image)
+- Position: fit to the image size (same relative position), or the same pixels
+- The images are saved with the current save settings (their saved edits stay). When overwriting, the originals are kept until the app closes and “Restore original” brings them back.
 
 ### Text
 
@@ -231,6 +240,12 @@ Converting and reducing size never change the originals; they write into a “Co
 - “Overwrite the originals”: replaces only images whose format stays the same (the originals are kept until the app closes).
 
 JPEG and BMP turn transparent areas white; GIF has up to 256 colours. HEIC is not supported.
+
+### Size limit and watermark (Convert format and Reduce file size)
+
+- File size limit: a limit per image (KB). A lossy format lowers its quality, then the image is made smaller until it fits. Images that cannot fit are reported and not written.
+- Add a watermark or signature: a text or a signature image (a PNG with a transparent background works best) in a corner, the centre or repeated across (diagonal). Choose the size (a share of the longer side), opacity, text colour and a shadow, and check them in the preview of the first image. Only the exported images get it; the originals and the images open in Sumīre do not change. With a watermark the originals cannot be overwritten.
+- Both are remembered for the next export.
 
 Exported files are read back to check the format, size and the absence of metadata. With “Keep removed metadata for restoring” on, the original's metadata is kept, linked to the exported file.
 

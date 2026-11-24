@@ -9,7 +9,7 @@ under the new file, so "メタデータを復元して別名保存" works on the
 from __future__ import annotations
 from .i18n import tr
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import io
 import os
@@ -22,6 +22,7 @@ from .editing import lanczos3_resize
 from .export import check_cancel
 from .imaging import HEIF_WRITABLE, ImageProblem, clean_pixels, flatten
 from .stealth import remove_stealth, stealth_channels
+from .watermark import Watermark, apply_watermark
 
 # Pillow format name → (label, extension). HEIF needs the optional pillow-heif plugin.
 TARGETS = {
@@ -52,11 +53,13 @@ class Encoding:
     lossless: bool = False          # WebP: lossless mode
     colors: int | None = None       # reduce to a palette of this many colours (PNG / GIF)
     max_side: int | None = None     # shrink so the longer side fits (Lanczos3)
+    max_bytes: int | None = None    # the file may not be larger: lower the quality, then the size
+    watermark: Watermark | None = None
 
     @property
     def lossy(self) -> bool:
-        """True when the decoded pixels may differ from the edited image."""
-        if self.max_side or self.colors or self.format in {"JPEG", "AVIF", "HEIF", "GIF"}:
+        """True when the decoded pixels may differ from the edited image (a watermark is not counted)."""
+        if self.max_side or self.max_bytes or self.colors or self.format in {"JPEG", "AVIF", "HEIF", "GIF"}:
             return True
         return self.format == "WEBP" and not self.lossless
 
@@ -99,17 +102,65 @@ def prepared_pixels(image, encoding: Encoding):
     if encoding.max_side and max(pixels.size) > encoding.max_side:
         scale = encoding.max_side / max(pixels.size)
         pixels = lanczos3_resize(pixels, (max(1, round(pixels.width * scale)), max(1, round(pixels.height * scale))))
+    if encoding.watermark is not None and not encoding.watermark.empty:
+        pixels = apply_watermark(pixels, encoding.watermark)
     return pixels
 
 
+# The lowest quality tried before the image is made smaller instead (below it, blocks and smearing show).
+SIZE_LIMIT_QUALITY = {"JPEG": 40, "WEBP": 40, "AVIF": 30, "HEIF": 30}
+# The smallest longer side a size limit may shrink an image to.
+SIZE_LIMIT_SIDE = 64
+
+
 def encode(image, encoding: Encoding):
-    """Return (encoded bytes, pixels the file must decode to when lossless)."""
+    """The encoded file's bytes, checked by decoding them again.
+
+    With ``max_bytes``, a lossy format first lowers its quality (down to SIZE_LIMIT_QUALITY), then the
+    image is made smaller step by step until the file fits; ImageProblem when it never does.
+    """
     if not writable(encoding.format):
         raise ImageProblem(tr("{get}の書き出しには対応していません。").format(get=TARGETS.get(encoding.format, (encoding.format,))[0]))
     quality = encoding.quality
     if quality is not None and (type(quality) is not int or not 1 <= quality <= 100):
         raise ImageProblem(tr("品質は1〜100で指定してください。"))
+    if encoding.max_bytes is not None and (type(encoding.max_bytes) is not int or encoding.max_bytes < 1024):
+        raise ImageProblem(tr("ファイルサイズの上限は1KB以上で指定してください。"))
     pixels = prepared_pixels(image, encoding)
+    raw = _encode_pixels(pixels, encoding)
+    limit = encoding.max_bytes
+    if limit is None or len(raw) <= limit:
+        return raw
+    lossy = encoding.format in SIZE_LIMIT_QUALITY and not encoding.lossless
+    if lossy:
+        # The highest quality that fits (binary search; the file shrinks as the quality drops).
+        low, high, best = SIZE_LIMIT_QUALITY[encoding.format], (quality or 90) - 1, None
+        while low <= high:
+            middle = (low + high) // 2
+            attempt = _encode_pixels(pixels, replace(encoding, quality=middle))
+            if len(attempt) <= limit:
+                best, low = attempt, middle + 1
+            else:
+                high = middle - 1
+        if best is not None:
+            return best
+        encoding = replace(encoding, quality=SIZE_LIMIT_QUALITY[encoding.format])
+    smaller = pixels
+    while max(smaller.size) > SIZE_LIMIT_SIDE:
+        scale = 0.85 if len(raw) < limit * 2 else max(0.3, (limit / len(raw)) ** 0.5)
+        side = max(SIZE_LIMIT_SIDE, round(max(smaller.size) * scale))
+        factor = side / max(pixels.size)
+        smaller = lanczos3_resize(pixels, (max(1, round(pixels.width * factor)), max(1, round(pixels.height * factor))))
+        raw = _encode_pixels(smaller, encoding)
+        if len(raw) <= limit:
+            return raw
+    raise ImageProblem(tr("ファイルサイズの上限（{limit}）に収まりません。上限を大きくするか、形式を変えてください。").format(
+        limit=format_bytes(limit)))
+
+
+def _encode_pixels(pixels, encoding: Encoding):
+    """Encode prepared pixels as ``encoding`` says, and check the result."""
+    quality = encoding.quality
     expected = pixels
     format = encoding.format
     options: dict[str, object] = {}
@@ -158,7 +209,15 @@ def encode(image, encoding: Encoding):
         options = {"quality": quality or 60}
         expected = None
     stream = io.BytesIO()
-    output.save(stream, format=format, **options)
+    try:
+        output.save(stream, format=format, **options)
+    except OSError:
+        # libjpeg's optimizer needs the whole file in one buffer, which Pillow sizes at one byte
+        # per pixel; a very detailed image can need more. Without it the file is a little larger.
+        if format != "JPEG" or not options.get("optimize"):
+            raise
+        stream = io.BytesIO()
+        output.save(stream, format=format, **{**options, "optimize": False})
     raw = stream.getvalue()
     verify_encoded(raw, format, pixels.size, expected)
     return raw

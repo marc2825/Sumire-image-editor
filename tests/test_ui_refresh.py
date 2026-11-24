@@ -109,7 +109,8 @@ def test_results_show_briefly_errors_stay_and_the_hint_only_once(qtbot, window):
     # Work in progress appears only when it takes a while.
     window.info("画像を読み込み中…")
     assert window.toast.isHidden() and window.toast_delay.isActive()
-    qtbot.waitUntil(lambda: window.toast.isVisible(), timeout=3000)
+    window.toast_delay.timeout.emit()  # as if the work went on past the delay
+    assert window.toast.isVisible()
     canvas = window.canvas.geometry()
     canvas.moveTopLeft(window.canvas.mapTo(window.toast.parentWidget(), window.canvas.rect().topLeft()))
     assert canvas.contains(window.toast.geometry())
@@ -151,3 +152,12 @@ def test_actions_are_shown_only_where_they_can_do_something(qtbot, window):
     window.document.metadata = ["EXIF"]
     window.update_controls()
     assert not window.metadata_delete_button.isHidden()
+
+
+def test_a_hint_cancels_progress_that_never_showed(window):
+    window.hide_toast()
+    window.hint_shown = True
+    window.info("画像を読み込み中…")
+    assert window.toast_delay.isActive()
+    window.info(window.ready_hint())  # done before the delay: nothing to show
+    assert not window.toast_delay.isActive() and window.toast.isHidden()

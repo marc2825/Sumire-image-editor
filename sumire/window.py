@@ -2,6 +2,7 @@ from __future__ import annotations
 from .i18n import LANGUAGES, language, switch_note, tr
 
 from collections import OrderedDict
+import math
 import weakref
 from pathlib import Path
 from time import monotonic
@@ -390,7 +391,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.image_menu = QMenu(self)
         self.image_menu.setToolTipsVisible(True)
         for action in (self.manual_save, self.workflow_actions["save_as"], self.metadata_button,
-                       self.editor_actions["metadata"], self.restore_original_action):
+                       self.editor_actions["metadata"], self.restore_original_action, self.workflow_actions["copy_area"]):
             self.image_menu.addAction(action)
         self.image_menu.addSeparator()
         other = self.image_menu.addMenu(tr("その他"))
@@ -704,6 +705,16 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.strength_row = self._slider_heading(self.strength_label, self.strength_box)
         tools.addLayout(self.strength_row)
         tools.addWidget(self.strength)
+        # Mosaic only: blocks of at least 1/100 of the longer side (a common rule for publishing), kept
+        # for every image while on. Changing the size by hand turns it off.
+        self.fitting_mosaic = False
+        self.mosaic_fit = QPushButton()
+        self.mosaic_fit.setObjectName("toggle")
+        self.mosaic_fit.setCheckable(True)
+        self.mosaic_fit.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.mosaic_fit.toggled.connect(self.mosaic_fit_toggled)
+        self.strength.valueChanged.connect(self.mosaic_size_changed)
+        tools.addWidget(self.mosaic_fit)
         self.fill_row = QWidget()
         fill = QHBoxLayout(self.fill_row)
         fill.setContentsMargins(0, 0, 0, 0)
@@ -893,6 +904,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
                 self.hide_toast()
             return
         if hasattr(self, "auto") and message == self.ready_hint():
+            self.toast_delay.stop()  # the work it was waiting on is over
             if not self.hint_shown and self.isVisible():
                 self.hint_shown = True
                 self.show_toast(6000)
@@ -1239,6 +1251,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         return self.loading or self.finalizing or self.batch_job is not None or self.novelai_job is not None or self.canvas.stroke is not None
 
     def update_controls(self):
+        self.fit_mosaic_size()
         blocked = self.busy()
         has = self.document is not None
         idle = not blocked and not self.saving
@@ -1333,6 +1346,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.strength_box.setEnabled(self.strength.isEnabled())
         for widget in (self.weak_button, self.strong_button, self.color_button):
             widget.setEnabled(not blocked and self.mode == "fill")
+        self.mosaic_fit.setEnabled(not blocked and self.mode == "mosaic")
         self.canvas.locked = blocked or self.pending_action is not None
         cancellable = self.loading or self.saving or self.batch_job is not None or self.novelai_job is not None
         self.progress.setVisible((cancellable or self.finalizing) and self.batch_job is None)
@@ -1611,6 +1625,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
             button.setChecked(value == mode)
         self.color_button.setVisible(mode == "fill")
         self.fill_row.setVisible(mode == "fill")
+        self.mosaic_fit.setVisible(mode == "mosaic")
         for widget in (self.strength, self.strength_label, self.strength_box):
             widget.setVisible(mode not in ("erase", "text"))
         # Text has its own settings (in the dialog that opens on a click); the area tools do not apply.
@@ -1621,6 +1636,48 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
             self.canvas.clear_text_preview()
         self.tool_changed()
         self.update_controls()
+
+    @staticmethod
+    def mosaic_block_for(size):
+        """The smallest mosaic block for an image of ``size``: 1/100 of the longer side, rounded up."""
+        return max(2, math.ceil(max(size) / 100))
+
+    def fit_mosaic_size(self):
+        """While 「長辺の1/100」 is on, give the mosaic that block size for the shown image."""
+        document = self.document
+        required = self.mosaic_block_for(document.image.size) if document is not None else None
+        self.mosaic_fit.setText(tr("長辺の1/100（{value} px）").format(value=required) if required else tr("長辺の1/100"))
+        self.mosaic_fit.setToolTip(
+            tr("モザイクの1マスを、画像の長辺の1/100（切り上げ）にします。オンの間は、画像を移るたびに合わせます。\n"
+               "大きさを手で変えるとオフになります。")
+            + (tr("\n表示中の画像：長辺 {side} px → {value} px").format(side=max(document.image.size), value=required) if required else ""))
+        if not self.mosaic_fit.isChecked() or required is None:
+            return
+        if self.mode != "mosaic":
+            self.mode_strengths["mosaic"] = required
+            return
+        if self.strength.maximum() < required:
+            self.strength.setMaximum(required)
+        if self.strength.value() != required:
+            self.fitting_mosaic = True
+            try:
+                self.strength.setValue(required)
+            finally:
+                self.fitting_mosaic = False
+
+    def mosaic_fit_toggled(self, checked):
+        if checked:
+            self.fit_mosaic_size()
+            if self.document is not None:
+                self.info(tr("モザイクの大きさを、長辺の1/100（{value} px）にしました。").format(
+                    value=self.mosaic_block_for(self.document.image.size)))
+
+    def mosaic_size_changed(self, value):
+        """A size set by hand (slider, number, keys, preset) is the user's choice: stop fitting."""
+        if self.fitting_mosaic or self.mode != "mosaic" or not self.mosaic_fit.isChecked() or self.document is None:
+            return
+        if value != self.mosaic_block_for(self.document.image.size):
+            self.mosaic_fit.setChecked(False)
 
     def toggle_eraser(self):
         """The eraser button and E switch the eraser on, and back to the previous tool."""
