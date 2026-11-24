@@ -193,7 +193,8 @@ def test_metadata_buttons_are_visible_and_scope_is_one_tab(qtbot, tabs, tmp_path
     two = picture(tmp_path / "two.png", patterned)
     open_page(qtbot, tabs, one)
     b = open_page(qtbot, tabs, two, "new")
-    assert b.metadata_delete_button.isVisible() and b.batch_delete_button.isVisible()
+    assert b.metadata_delete_button.isVisible() and b.library_menu_button.isVisible()
+    assert b.batch_button in b.library_menu.actions()
     assert not tabs.welcome.metadata_delete_button.isVisible()
     b.metadata_delete_button.click()
     qtbot.waitUntil(lambda: b.document.output is not None and not b.saving, timeout=10000)
@@ -278,10 +279,10 @@ def test_narrow_window_keeps_metadata_actions_inside_toolbar(qtbot, tabs, tmp_pa
     for button in (page.metadata_delete_button, page.save_next_button):
         assert button.mapTo(page.image_bar, button.rect().topLeft()).x() >= 0
         assert button.mapTo(page.image_bar, button.rect().bottomRight()).x() < page.image_bar.width()
-    assert page.batch_delete_button.width() >= page.batch_delete_button.sizeHint().width()
-    # The whole-tab actions have their own row below the header and stay inside the panel.
-    assert page.batch_delete_button.geometry().top() > page.library_menu_button.geometry().bottom()
-    assert page.reset_labels_button.geometry().right() < page.library_panel.width()
+    # The whole-tab work is one button at the foot of the list, inside the panel.
+    menu = page.library_menu_button
+    assert menu.width() >= menu.sizeHint().width() and menu.geometry().right() < page.library_panel.width()
+    assert menu.geometry().top() > page.list.geometry().bottom()
     # The app-wide controls are in the tab row, not in the tab's own (hidden) bar.
     assert not page.top_bar.isVisible()
     for button in (page.file_button, page.save_mode_button, page.help_button):
@@ -373,7 +374,7 @@ def test_batch_metadata_button_processes_all_current_tab_images_only(qtbot, tabs
     first = open_page(qtbot, tabs, a.parent)
     open_page(qtbot, tabs, other, "new")
     tabs.tabs.setCurrentWidget(first)
-    first.batch_delete_button.click()
+    first.batch_button.trigger()
     qtbot.waitUntil(lambda: first.batch_job is None and first.document.output is not None, timeout=15000)
     for path in (a,b):
         with Image.open(path) as image:
@@ -424,8 +425,9 @@ def test_tab_row_holds_the_current_tabs_app_controls_and_images_have_their_own_b
     tabs.tabs.setCurrentWidget(a)
     assert a.file_button.isVisible() and not b.file_button.isVisible()
     assert a.file_button.parentWidget().parentWidget() is tabs.tabs.leading
-    # The image's controls sit above it, the view tools below it.
-    assert a.save_next_button.parentWidget() is a.image_bar and a.compare_button.parentWidget() is a.view_bar
+    # The image's controls sit above it; sorting and the view tools below it.
+    assert a.save_next_button.parentWidget() is a.image_bar and a.view_bar.isAncestorOf(a.compare_button)
+    assert a.view_bar.isAncestorOf(a.label_buttons["accepted"])
     assert a.image_bar.geometry().bottom() <= a.canvas.geometry().top() <= a.view_bar.geometry().top()
     tabs.close_tab(a)
     qtbot.waitUntil(lambda: tabs.tabs.count() == 1)

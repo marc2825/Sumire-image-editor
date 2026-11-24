@@ -303,7 +303,7 @@ class SettingsDialog(QDialog):
         fullscreen.clicked.connect(lambda: (self.accept(), window.editor_actions["fullscreen"].trigger()))
         layout.addWidget(fullscreen, 0, Qt.AlignmentFlag.AlignLeft)
         self.heading(layout, tr("仕分け"))
-        layout.addWidget(self.mirror(window.auto_advance))
+        layout.addWidget(self.mirror(window.auto_advance, tr("ラベルを付けたら次へ")))
         layout.addWidget(note(tr("仕分けのラベルを付けると、自動で次の画像へ進みます。")))
         # Short here; the whole rule is in the tooltip (also in the ラベル menu).
         self.auto_sort = self.mirror(window.auto_sort_action)

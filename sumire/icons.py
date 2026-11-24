@@ -11,7 +11,7 @@ from functools import lru_cache
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 
-from .theme import TOKENS
+from .theme import BRAND, TOKENS
 
 _SIZE = 64
 
@@ -201,6 +201,66 @@ def _draw(painter: QPainter, name: str, color: QColor):
         painter.drawRoundedRect(QRectF(2.5, 6.5, 11, 7), 1.5, 1.5)
         _line(painter, (8, 10), (8, 2.5))
         _line(painter, (5.5, 5), (8, 2.5), (10.5, 5))
+    # The tools: mosaic, blur and fill, and the shapes they are applied with.
+    elif name == "mosaic":
+        painter.drawRect(QRectF(2.5, 2.5, 11, 11))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawRect(QRectF(2.5, 2.5, 5.5, 5.5))
+        painter.drawRect(QRectF(8, 8, 5.5, 5.5))
+    elif name == "blur":
+        path = QPainterPath(QPointF(8, 2))
+        path.cubicTo(10.5, 5, 12.5, 7.5, 12.5, 9.7)
+        path.cubicTo(12.5, 12.2, 10.5, 14, 8, 14)
+        path.cubicTo(5.5, 14, 3.5, 12.2, 3.5, 9.7)
+        path.cubicTo(3.5, 7.5, 5.5, 5, 8, 2)
+        painter.drawPath(path)
+        _line(painter, (6, 10.5), (6.5, 11.8), (7.8, 12.3))
+    elif name == "fill":
+        painter.setBrush(color)
+        painter.drawRoundedRect(QRectF(2.5, 2.5, 11, 11), 1.5, 1.5)
+    elif name == "brush":
+        path = QPainterPath(QPointF(2, 12))
+        path.cubicTo(4.5, 4, 6.5, 13.5, 9, 8)
+        path.cubicTo(10.5, 4.5, 12, 4.5, 14, 5)
+        painter.drawPath(path)
+    elif name == "rectangle":
+        painter.drawRect(QRectF(2.5, 4, 11, 8))
+    elif name == "ellipse":
+        painter.drawEllipse(QRectF(2, 3.5, 12, 9))
+    elif name == "polygon":
+        _line(painter, (8, 2.5), (13.5, 6.5), (11.5, 13), (4.5, 13), (2.5, 6.5), (8, 2.5))
+    elif name == "lasso":
+        path = QPainterPath(QPointF(6.5, 11))
+        path.cubicTo(3.5, 10.5, 2, 8.8, 2, 7)
+        path.cubicTo(2, 4.5, 4.7, 2.5, 8, 2.5)
+        path.cubicTo(11.3, 2.5, 14, 4.5, 14, 7)
+        path.cubicTo(14, 9.5, 11.3, 11.3, 8, 11.3)
+        painter.drawPath(path)
+        _line(painter, (6.5, 11), (5.6, 12.6), (7, 14))
+    # The side panels, shown or folded.
+    elif name in ("sidebar_left", "sidebar_right"):
+        if name == "sidebar_right":
+            painter.translate(16, 0)
+            painter.scale(-1, 1)
+        painter.drawRoundedRect(QRectF(1.5, 2.5, 13, 11), 1.5, 1.5)
+        _line(painter, (6, 2.5), (6, 13.5))
+        painter.setPen(Qt.PenStyle.NoPen)
+        fill = QColor(color)
+        fill.setAlphaF(0.45)
+        painter.setBrush(fill)
+        painter.drawRect(QRectF(2.2, 3.2, 3.2, 9.6))
+    elif name == "adjust":
+        _line(painter, (2, 5), (9, 5))
+        _line(painter, (13, 5), (14, 5))
+        _line(painter, (2, 11), (3, 11))
+        _line(painter, (7, 11), (14, 11))
+        painter.drawEllipse(QPointF(11, 5), 2, 2)
+        painter.drawEllipse(QPointF(5, 11), 2, 2)
+    elif name == "stack":
+        # Several images at once: the whole-list work.
+        painter.drawRoundedRect(QRectF(2.5, 6, 9, 7.5), 1.2, 1.2)
+        _line(painter, (4.5, 4), (13.5, 4), (13.5, 11))
 
 
 def _pixmap(name: str, color: str) -> QPixmap:
@@ -238,6 +298,10 @@ def swatch(color: str, size: int = 14) -> QIcon:
     return QIcon(pixmap)
 
 
+# The four squares of the mark in a 64-unit square: (x, y, BRAND colour).
+MARK_SQUARES = ((14, 14, "light"), (34, 14, "mid"), (14, 34, "deep"), (34, 34, "light"))
+
+
 def app_mark(size: int = 64) -> QPixmap:
     """The established four-square Sumīre mark (matches assets/sumire.ico)."""
     pixmap = QPixmap(size, size)
@@ -246,10 +310,10 @@ def app_mark(size: int = 64) -> QPixmap:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     unit = size / 64
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor("#25362e"))
+    painter.setBrush(QColor(BRAND["ground"]))
     painter.drawRoundedRect(QRectF(0, 0, size, size), 12 * unit, 12 * unit)
-    for x, y, value in [(14, 14, "#a8dfc2"), (34, 14, "#7da78f"), (14, 34, "#648873"), (34, 34, "#a8dfc2")]:
-        painter.setBrush(QColor(value))
+    for x, y, value in MARK_SQUARES:
+        painter.setBrush(QColor(BRAND[value]))
         painter.drawRect(QRectF(x * unit, y * unit, 16 * unit, 16 * unit))
     painter.end()
     return pixmap

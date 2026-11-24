@@ -8,7 +8,7 @@ from time import monotonic
 from PIL import Image
 
 from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QThreadPool, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QFont, QFontMetrics, QKeySequence, QShortcut
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QAbstractScrollArea, QAbstractSpinBox, QApplication, QCheckBox, QColorDialog, QComboBox, QDialog, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -26,7 +26,7 @@ from .organize import pending_renames, recover_rename
 from .session import Receipts, source_key
 from .theme import TOKENS, dark_palette, stylesheet
 from .icons import icon, swatch
-from .ui import COPYRIGHT, ElidedLabel, install_dialog_tint, slider_with_box, FilenameField, PositionField, Popover, ValueLabel, WelcomePage, ZoomField, attach_key_hint, describe_inputs, divider, repolish, section_label, tool_button
+from .ui import ElidedLabel, install_dialog_tint, slider_with_box, FilenameField, PositionField, Popover, ValueLabel, WelcomePage, ZoomField, attach_key_hint, describe_inputs, divider, repolish, section_label, tool_button, vertical_divider
 from .workers import Job
 from .workbench import Workbench
 from .explorer import configure_context_menu
@@ -46,6 +46,9 @@ from .archive_features import ArchiveFeatures, modified_key, writes_files
 
 # The overwrite notice is shown once per run unless the user hides it for good.
 OVERWRITE_NOTICE = {"shown": False}
+# A narrow window folds the tools, then the list, so the image keeps a usable width.
+# Tests that check the panels in the small offscreen window turn this off.
+AUTO_FOLD = {"enabled": True, "tools": 1100, "library": 720}
 SHAPE_TIPS = {
     "brush": tr("なぞった線の上に適用します。"),
     "rectangle": tr("ドラッグした長方形の範囲に適用します。"),
@@ -79,7 +82,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         available = QApplication.primaryScreen().availableGeometry()
         self.setMinimumSize(800, 440)
         # Leave room for the native title bar and borders at fractional scaling.
-        self.resize(min(1320, available.width() - 32), min(850, available.height() - 64))
+        self.resize(min(1440, available.width() - 32), min(900, available.height() - 64))
         QApplication.instance().setPalette(dark_palette())
         self.setStyleSheet(stylesheet())
         install_dialog_tint(QApplication.instance())
@@ -118,6 +121,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.jpeg_quality = 95
         self.custom_title = None
         self.after_load_message = None
+        self.auto_folded = set()
         self.init_workbench()
         self.init_features()
         self.init_folders()
@@ -139,6 +143,8 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.restore_settings()
         self.update_controls()
         self.refresh_welcome()
+        # Start with the focus on the page itself, not on the first button (which would show its focus ring).
+        self.welcome.setFocus()
         self.move(available.x() + max(0, (available.width() - self.width()) // 2),
                   available.y() + max(0, (available.height() - self.height()) // 2))
 
@@ -191,7 +197,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
                                     tooltip=tr("一覧に並んでいる順に、桁をそろえた0からの連番へ改名します。実行前に確認します。"))
         self.restore_original_action = action(tr("上書き前の元画像に戻す"), self.restore_original,
                                               tooltip=tr("この起動中に最初に上書きする前の元画像に戻します。実行前に確認します。"))
-        self.batch_button = action(tr("全画像のメタデータを一括削除"), self.start_batch,
+        self.batch_button = action(tr("全画像のメタデータを一括削除…"), self.start_batch,
                                    tooltip=tr("保存済みを含む一覧の全画像からメタデータを削除します。加工は保ちます。"))
         self.novelai_adjust = action(tr("NovelAIへ渡す前に切り抜き・縮小"), checkable=True)
         self.novelai_metadata = action(tr("NovelAIに渡す画像に生成情報（メタデータ）を付ける"), checkable=True)
@@ -206,7 +212,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
 
     def _build_ui(self):
         self._build_actions()
-        root = QWidget()
+        root = self.root = QWidget()
         layout = QVBoxLayout(root)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -219,6 +225,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.welcome.recentRemoved.connect(self.forget_recent)
         self.welcome.saveSettingsRequested.connect(self.show_save_settings)
         self.welcome.languageChosen.connect(self.choose_language)
+        self.credit = self.welcome.credit
         self.pages.addWidget(self.welcome)
         splitter = self.splitter = QSplitter()
         splitter.setHandleWidth(1)
@@ -226,18 +233,25 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         splitter.addWidget(self.build_library_panel())
         splitter.addWidget(self._build_center())
         splitter.addWidget(self._build_tools_panel())
-        # Wide enough for the two whole-tab action buttons to sit side by side.
-        splitter.setSizes([372, 668, 280])  # room for the list buttons two by two
+        # The image gets the room: the list and the tools keep to their working width.
+        splitter.setSizes([248, 944, 248])
         splitter.setStretchFactor(1, 1)
         self.pages.addWidget(splitter)
+        self.pages.currentChanged.connect(lambda *_args: self.place_toast())
         layout.addWidget(self.pages, 1)
-        layout.addWidget(self._build_status_bar())
+        self._build_toast(root)
         self._build_save_popover()
-        self.workspace_widgets = [self.undo_button, self.redo_button, self.save_state, self.metadata_state, self.metadata_delete_button,
+        # (「メタデータを削除」 follows the image instead: see update_metadata_state.)
+        self.workspace_widgets = [self.undo_button, self.redo_button, self.save_state, self.metadata_state,
                                   self.save_next_button, *self.view_controls]
         self.update_color_button()
         self.tool_changed()
         self.update_library_view()
+        # A mouse click on a button leaves the keyboard focus where it was (usually the image, whose
+        # keys keep working); Tab still reaches every button, and then shows the focus ring.
+        for button in root.findChildren(QPushButton):
+            if button.focusPolicy() == Qt.FocusPolicy.StrongFocus:
+                button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
 
     def _build_top_bar(self):
         """App-wide controls: Sumīre and the file menu, then the save method, help and settings.
@@ -296,24 +310,45 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.top_row.addWidget(self.app_right)
 
     def _build_image_bar(self):
-        """The shown image's controls, centred above it; two rows when the column is narrow."""
+        """One row above the image: where it is, whether it is saved, its own actions and 「次へ」.
+
+        A narrow column puts the state and the actions on a second row instead of cutting them.
+        """
         bar = self.image_bar = QFrame()
         bar.setObjectName("imageBar")
         bar.installEventFilter(self)
         column = QVBoxLayout(bar)
-        column.setContentsMargins(10, 4, 10, 4)
+        column.setContentsMargins(8, 6, 8, 6)
         column.setSpacing(4)
         self.image_rows = []
         for _ in range(2):
             row = QHBoxLayout()
-            row.setSpacing(6)
+            row.setSpacing(4)
             column.addLayout(row)
             self.image_rows.append(row)
+        self.library_toggle = tool_button("sidebar_left", tr("一覧を隠す"), self.toggle_library_panel)
+        self.tools_toggle = tool_button("sidebar_right", tr("道具を隠す"), self.toggle_tools_panel)
+        self.previous = tool_button("chevron_left", tr("前の画像 · ←"), lambda: self.navigate(-1))
+        self.next = tool_button("chevron_right", tr("次の画像 · →"), lambda: self.navigate(1))
+        self.file_label = FilenameField()
+        self.file_label.editStarted.connect(self.remember_rename_source)
+        self.file_label.renameRequested.connect(self.rename_inline)
+        self.file_label.setObjectName("fileName")
+        self.file_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.file_label.setMinimumWidth(96)
+        self.position_label = PositionField()
+        self.position_label.jumpRequested.connect(self.jump_to_image)
         self.undo_button = tool_button("undo", tr("元に戻す · Ctrl+Z"), lambda: self.history(False))
         self.redo_button = tool_button("redo", tr("やり直す · Ctrl+Shift+Z / Ctrl+Y"), lambda: self.history(True))
         self.save_state = QLabel()
         self.save_state.setObjectName("saveState")
         self.save_state.setTextFormat(Qt.TextFormat.RichText)
+        # As wide as its longest state, so the bar does not shift while saving.
+        self.save_state.ensurePolished()
+        small = QFont(self.save_state.font())
+        small.setPixelSize(12)
+        self.save_state.setMinimumWidth(max(QFontMetrics(small).horizontalAdvance(f"✓ {text}") for text in (
+            tr("保存済み"), tr("保存中…"), tr("保存失敗"), tr("未保存"), tr("未編集"))) + 8)
         self.metadata_state = QToolButton()
         self.metadata_state.setObjectName("metadataState")
         self.metadata_state.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -323,69 +358,15 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.metadata_delete_button.clicked.connect(self.metadata_button.trigger)
         self.metadata_delete_button.setToolTip(tr("表示中の画像のメタデータを削除し、現在の保存方法で保存します。"))
         self.metadata_delete_button.setAccessibleName(tr("表示中の画像のメタデータを削除"))
-        # Light red: it throws away the overwrites of this run for the shown image.
+        # Light red: it throws away the overwrites of this run for the shown image. It sits with
+        # 「加工・マスクを初期化」 at the foot of the tools, shown only while originals are overwritten and kept.
         self.restore_original_button = QToolButton()
         self.restore_original_button.setObjectName("restoreOriginal")
         self.restore_original_button.setText(tr("上書き前に戻す"))
         self.restore_original_button.setAccessibleName(tr("上書き前の元画像に戻す"))
         self.restore_original_button.clicked.connect(self.restore_original_action.trigger)
-        self.save_next_button = self._button(tr("保存して次へ →"), self.save_next, tr("Enter · 保存して次の画像へ（未編集でも保存）"), primary=True)
+        self.save_next_button = self._button(tr("保存して次へ"), self.save_next, tr("Enter · 保存して次の画像へ（未編集でも保存）"), primary=True)
         self.save_next_button.setMinimumHeight(32)
-        self.image_state_widgets = [self.undo_button, self.redo_button, self.save_state, self.metadata_state]
-        self.image_action_widgets = [self.metadata_delete_button, self.restore_original_button, self.save_next_button]
-        self.image_bar_compact = None
-        self.arrange_image_bar(False)
-        return bar
-
-    def arrange_image_bar(self, compact):
-        """One centred row, or the state on one row and the two buttons below it."""
-        if compact == self.image_bar_compact:
-            return
-        self.image_bar_compact = compact
-        for row in self.image_rows:
-            while row.count():
-                row.takeAt(0)
-        first, second = self.image_rows
-        first.addStretch(1)
-        for widget in self.image_state_widgets:
-            first.addWidget(widget)
-        if compact:
-            second.addStretch(1)
-        else:
-            first.addSpacing(10)
-        for widget in self.image_action_widgets:
-            (second if compact else first).addWidget(widget)
-        first.addStretch(1)
-        if compact:
-            second.addStretch(1)
-
-    def _build_center(self):
-        center = QWidget()
-        layout = QVBoxLayout(center)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        header = self.canvas_header = QFrame()
-        header.setObjectName("canvasHeader")
-        header.installEventFilter(self)
-        row = QHBoxLayout(header)
-        row.setContentsMargins(10, 6, 10, 6)
-        row.setSpacing(4)
-        self.previous = tool_button("chevron_left", tr("前の画像 · ←"), lambda: self.navigate(-1))
-        self.next = tool_button("chevron_right", tr("次の画像 · →"), lambda: self.navigate(1))
-        row.addWidget(self.previous)
-        row.addWidget(self.next)
-        row.addSpacing(6)
-        self.file_label = FilenameField()
-        self.file_label.editStarted.connect(self.remember_rename_source)
-        self.file_label.renameRequested.connect(self.rename_inline)
-        self.file_label.setObjectName("fileName")
-        self.file_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        self.file_label.setMinimumWidth(80)
-        row.addWidget(self.file_label, 1)
-        self.position_label = PositionField()
-        self.position_label.jumpRequested.connect(self.jump_to_image)
-        row.addWidget(self.position_label)
-        row.addSpacing(12)
         # Hand the edited image (including unsaved edits) to other apps and services.
         self.share_menu = QMenu(self)
         self.share_menu.setToolTipsVisible(True)
@@ -401,12 +382,10 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
             action.setToolTip(tip)
             action.triggered.connect(handler)
             self.share_actions[key] = action
-        self.share_button = self._button(tr("共有…"), lambda: None, tr("編集結果（未保存の変更を含む）を、ほかのアプリやサービスへ渡します。"),
-                                         variant="ghost")
-        self.share_button.setMenu(self.share_menu)
-        self.share_button.setIcon(icon("share"))
+        self.share_button = tool_button("share", tr("共有 · 編集結果（未保存の変更を含む）を、ほかのアプリやサービスへ渡します。"))
         self.share_button.setAccessibleName(tr("共有"))
-        row.addWidget(self.share_button)
+        self.share_button.setMenu(self.share_menu)
+        self.share_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         # The everyday image commands; rarer ones (超解像 among them) stay one level down.
         self.image_menu = QMenu(self)
         self.image_menu.setToolTipsVisible(True)
@@ -425,11 +404,68 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.image_menu_button.setAccessibleName(tr("この画像の操作"))
         self.image_menu_button.setMenu(self.image_menu)
         self.image_menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        row.addWidget(self.image_menu_button)
-        layout.addWidget(header)
+        self.image_state_widgets = [self.undo_button, self.redo_button, self.save_state, self.metadata_state]
+        self.image_action_widgets = [self.metadata_delete_button, self.save_next_button]
+        self.image_bar_compact = None
+        self.arrange_image_bar(False)
+        return bar
+
+    def image_bar_needs(self):
+        """The width the bar needs to hold everything that is shown on one row."""
+        widgets = [self.library_toggle, self.previous, self.next, self.position_label, *self.image_state_widgets,
+                   *self.image_action_widgets, self.share_button, self.image_menu_button, self.tools_toggle]
+        # The delete button counts even while hidden, so moving between images never reflows the bar.
+        shown = [widget for widget in widgets if not widget.isHidden() or widget is self.metadata_delete_button]
+        widths = (widget.sizeHint().expandedTo(widget.minimumSize()).boundedTo(widget.maximumSize()).width() for widget in shown)
+        return sum(widths) + 4 * len(shown) + self.file_label.minimumWidth() + 24
+
+    def arrange_image_bar(self, compact):
+        """One row; or the place on the first row and the state and actions on the second."""
+        if compact == self.image_bar_compact:
+            return
+        self.image_bar_compact = compact
+        for row in self.image_rows:
+            while row.count():
+                row.takeAt(0)
+        first, second = self.image_rows
+        for widget in (self.library_toggle, self.previous, self.next):
+            first.addWidget(widget)
+        first.addSpacing(4)
+        first.addWidget(self.file_label, 1)
+        first.addWidget(self.position_label)
+        state = second if compact else first
+        if compact:
+            for widget in (self.undo_button, self.redo_button, self.share_button, self.image_menu_button, self.tools_toggle):
+                first.addWidget(widget)
+            second.addStretch(1)
+            for widget in (self.save_state, self.metadata_state):
+                second.addWidget(widget)
+        else:
+            first.addSpacing(12)
+            for widget in self.image_state_widgets:
+                first.addWidget(widget)
+        state.addSpacing(6)
+        state.addWidget(self.metadata_delete_button)
+        if not compact:
+            first.addWidget(self.share_button)
+            first.addWidget(self.image_menu_button)
+        state.addSpacing(6)
+        state.addWidget(self.save_next_button)
+        if compact:
+            second.addStretch(1)
+        else:
+            first.addWidget(self.tools_toggle)
+
+    def _build_center(self):
+        center = QWidget()
+        layout = QVBoxLayout(center)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         layout.addWidget(self._build_image_bar())
         self.canvas = Canvas()
         self.canvas.strokeStarted.connect(self.update_controls)
+        # A message over the foot of the image must not stay in the way of drawing there.
+        self.canvas.strokeStarted.connect(lambda *_args: self.hide_toast() if self.toast.property("tone") != "danger" else None)
         self.canvas.strokeCancelled.connect(self.stroke_cancelled)
         self.canvas.lassoNotClosed.connect(lambda: self.info(tr("線が交わって閉じた範囲ができなかったため、適用しませんでした。")))
         self.canvas.strokeFinished.connect(self.finish_stroke)
@@ -446,34 +482,113 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.canvas.maskToggleRequested.connect(lambda: self.mask_toggle.toggle() if self.mask_toggle.isEnabled() else None)
         self.canvas.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.canvas.customContextMenuRequested.connect(self.show_canvas_menu)
+        self.canvas.installEventFilter(self)
         layout.addWidget(self.canvas, 1)
-        # Tools for looking at the shown image, centred under it.
-        view_bar = self.view_bar = QFrame()
-        view_bar.setObjectName("viewBar")
-        row = QHBoxLayout(view_bar)
-        row.setContentsMargins(10, 4, 10, 4)
-        row.setSpacing(6)
-        self.crop_tool = tool_button("crop", tr("画像を切り抜く · 切り抜きと寸法の変更"), lambda: self.editor_actions["edit"].trigger(),
-                                     text=tr("切り抜き"), variant="ghost")
+        layout.addWidget(self._build_view_bar())
+        return center
+
+    def _build_view_bar(self):
+        """Under the image: sorting it (labels, custom tags) and looking at it (compare, mask, zoom)."""
+        bar = self.view_bar = QFrame()
+        bar.setObjectName("viewBar")
+        bar.installEventFilter(self)
+        column = QVBoxLayout(bar)
+        column.setContentsMargins(10, 6, 10, 6)
+        column.setSpacing(6)
+        self.view_rows = []
+        for _ in range(2):
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            column.addLayout(row)
+            self.view_rows.append(row)
+        self.key_hints = getattr(self, "key_hints", {})
+        # Sorting: the three labels with their keys, the custom tags, and whether to move on.
+        self.sort_group = QWidget()
+        sort = QHBoxLayout(self.sort_group)
+        sort.setContentsMargins(0, 0, 0, 0)
+        sort.setSpacing(6)
+        self.label_buttons = {}
+        for number, (label, text) in enumerate(REVIEW_LABELS.items(), 1):
+            button = self._button(text, lambda checked=False, value=label: self.press_label(value),
+                                  tr("{number} · 複数選択した画像にはまとめて付けます。外すときは「ラベルを解除」（Alt+0）。").format(number=number))
+            button.setObjectName("reviewLabel")
+            button.setProperty("label", label)
+            button.setProperty("keyCorner", True)
+            button.setCheckable(True)
+            self.label_buttons[label] = button
+            self.key_hints[label] = attach_key_hint(button)
+            sort.addWidget(button)
+        self.auto_advance = QCheckBox(tr("付けたら次へ"))
+        self.auto_advance.setChecked(AUTO_ADVANCE_DEFAULT)
+        self.auto_advance.setToolTip(tr("ラベルを付けたら、次の画像へ進みます。"))
+        self.auto_advance.setAccessibleName(tr("ラベルを付けたら次へ"))
+        sort.addWidget(self.auto_advance)
+        sort.addWidget(vertical_divider())
+        self.quick_tag_panel = QWidget()
+        self.quick_tag_grid = QHBoxLayout(self.quick_tag_panel)
+        self.quick_tag_grid.setContentsMargins(0, 0, 0, 0)
+        self.quick_tag_grid.setSpacing(6)
+        sort.addWidget(self.quick_tag_panel)
+        self.quick_tag_edit = tool_button("tag", tr("オリジナルタグの編集 · 追加・名前の変更・削除・並べ替え"), self.edit_quick_tags)
+        self.quick_tag_edit.setAccessibleName(tr("オリジナルタグの編集"))
+        sort.addWidget(self.quick_tag_edit)
+        self.quick_tag_buttons: list[QPushButton] = []
+        self.quick_tags = quick_tags(self.preferences.data)
+        self.build_quick_tag_buttons()
+        # Looking: compare and mask (with their keys), then the size and the zoom.
+        self.view_group = QWidget()
+        view = QHBoxLayout(self.view_group)
+        view.setContentsMargins(0, 0, 0, 0)
+        view.setSpacing(4)
         self.compare_button = tool_button("compare", tr("押している間、元画像を表示 · Tabでも可"), text=tr("比較"), variant="ghost")
         self.compare_button.pressed.connect(lambda: self.compare(True))
         self.compare_button.released.connect(lambda: self.compare(False))
         self.mask_toggle = tool_button("mask", tr("加工範囲のマスクを表示 · M"), text=tr("マスク"), variant="ghost", checkable=True)
         self.mask_toggle.toggled.connect(self.show_edit_mask)
-        row.addStretch(1)
-        # The keys of compare and mask, small after their text: 比較（Tab）.
-        self.key_hints = getattr(self, "key_hints", {})
+        for button in (self.compare_button, self.mask_toggle):
+            button.setProperty("keyCorner", True)
         self.key_hints.update(compare=attach_key_hint(self.compare_button), mask=attach_key_hint(self.mask_toggle))
-        for widget in (self.crop_tool, self.compare_button, self.mask_toggle):
-            row.addWidget(widget)
-        row.addStretch(1)
-        layout.addWidget(view_bar)
-        return center
+        view.addWidget(self.compare_button)
+        view.addWidget(self.mask_toggle)
+        view.addWidget(vertical_divider())
+        # The shown image's size, beside the zoom.
+        self.image_size_label = QLabel()
+        self.image_size_label.setObjectName("muted")
+        view.addWidget(self.image_size_label)
+        self.zoom_label = ZoomField()
+        self.zoom_label.zoomRequested.connect(lambda percent: self.canvas.zoom(percent / 100 / self.canvas.scale))
+        view.addWidget(self.zoom_label)
+        fit = self.fit_button = tool_button("fit", tr("画面に合わせる · F"), self.canvas.fit)
+        actual = self.actual_size_button = self._button(tr("原寸"), lambda: self.canvas.zoom(1 / self.canvas.scale), "Ctrl+1 · 100%", variant="ghost")
+        view.addWidget(fit)
+        view.addWidget(actual)
+        self.view_controls = [self.compare_button, self.mask_toggle, self.zoom_label, fit, actual]
+        self.view_bar_compact = None
+        self.arrange_view_bar(False)
+        return bar
+
+    def arrange_view_bar(self, compact):
+        """Sorting on the left and viewing on the right; two rows when they do not fit side by side."""
+        if compact == self.view_bar_compact:
+            return
+        self.view_bar_compact = compact
+        for row in self.view_rows:
+            while row.count():
+                row.takeAt(0)
+        first, second = self.view_rows
+        first.addWidget(self.sort_group)
+        first.addStretch(1)
+        if compact:
+            second.addStretch(1)
+            second.addWidget(self.view_group)
+            second.addStretch(1)
+        else:
+            first.addWidget(self.view_group)
 
     def _build_tools_panel(self):
-        container = QWidget()
+        container = self.tools_panel = QWidget()
         container.setObjectName("panel")
-        container.setMinimumWidth(256)
+        container.setMinimumWidth(248)
         container.setMaximumWidth(340)
         outer = QVBoxLayout(container)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -481,45 +596,47 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         right = QWidget()
         right.setObjectName("panel")
         tools = QVBoxLayout(right)
-        tools.setContentsMargins(16, 14, 16, 12)
+        tools.setContentsMargins(14, 14, 14, 12)
         tools.setSpacing(10)
-        tools.addWidget(section_label(tr("編集ツール")))
-        segmented = QFrame()
-        segmented.setObjectName("segmented")
-        mode_row = QHBoxLayout(segmented)
-        mode_row.setContentsMargins(3, 3, 3, 3)
-        mode_row.setSpacing(2)
+        tools.addWidget(section_label(tr("道具")))
+        # The five tools in one form: an icon over its name, the chosen one in the accent.
+        grid = QGridLayout()
+        grid.setSpacing(4)
         self.mode_buttons = []
-        for text, mode, tip in [(tr("モザイク"), "mosaic", BLUR_NOTE), (tr("ぼかし"), "blur", BLUR_NOTE),
-                                (tr("塗りつぶし"), "fill", FILL_NOTE)]:
-            button = self._button(text, lambda checked=False, m=mode: self.set_mode(m), tip)
-            button.setObjectName("segment")
+        self.key_hints = getattr(self, "key_hints", {})
+        for number, (mode, text, glyph, tip) in enumerate([
+                ("mosaic", tr("モザイク"), "mosaic", BLUR_NOTE), ("blur", tr("ぼかし"), "blur", BLUR_NOTE),
+                ("fill", tr("塗りつぶし"), "fill", FILL_NOTE),
+                ("erase", tr("消しゴム"), "eraser", tr("E · なぞった部分を元画像に戻します。もう一度押すと元のツールに戻ります")),
+                ("text", tr("テキスト"), "text", tr("T · 画像をクリックして文字を入れます。フォント・大きさ・色を選べます"))]):
+            button = QToolButton()
+            button.setProperty("variant", "tool")
+            button.setText(text)
+            button.setIcon(icon(glyph))
+            button.setIconSize(QSize(20, 20))
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
             button.setCheckable(True)
             button.setChecked(mode == "mosaic")
+            button.setToolTip(tip)
+            button.setAccessibleName(text)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setMinimumHeight(52)
+            if mode == "erase":
+                button.clicked.connect(lambda *_args: self.toggle_eraser())
+                self.erase_button = button
+                self.key_hints["eraser"] = attach_key_hint(button)
+            elif mode == "text":
+                button.clicked.connect(lambda *_args: self.toggle_text())
+                self.text_button = button
+                self.key_hints["text"] = attach_key_hint(button)
+            else:
+                button.clicked.connect(lambda *_args, value=mode: self.set_mode(value))
             self.mode_buttons.append((mode, button))
-            mode_row.addWidget(button)
-        tools.addWidget(segmented)
-        self.erase_button = self._button(tr("消しゴム"), self.toggle_eraser,
-                                         tr("E · なぞった部分を元画像に戻します。もう一度押すと元のツールに戻ります"))
-        self.erase_button.setObjectName("toggle")
-        self.erase_button.setIcon(icon("eraser"))
-        self.erase_button.setCheckable(True)
-        self.key_hints = getattr(self, "key_hints", {})
-        self.key_hints["eraser"] = attach_key_hint(self.erase_button)
-        self.mode_buttons.append(("erase", self.erase_button))
-        self.text_button = self._button(tr("テキスト"), self.toggle_text,
-                                        tr("T · 画像をクリックして文字を入れます。フォント・大きさ・色を選べます"))
-        self.text_button.setObjectName("toggle")
-        self.text_button.setIcon(icon("text"))
-        self.text_button.setCheckable(True)
-        self.key_hints["text"] = attach_key_hint(self.text_button)
-        self.mode_buttons.append(("text", self.text_button))
-        # One per row: side by side they would not fit the narrowest panel with their key hints.
-        tools.addWidget(self.erase_button)
-        tools.addWidget(self.text_button)
-        self.reset_edits_button = self._button(tr("加工・マスクを初期化"), self.reset_edits_action.trigger,
-                                               self.reset_edits_action.toolTip())
-        tools.addWidget(self.reset_edits_button)
+            grid.addWidget(button, *divmod(number, 3))
+        for column in range(3):
+            grid.setColumnStretch(column, 1)
+        tools.addLayout(grid)
         self.mode = "mosaic"
         self.mode_before_erase = "mosaic"
         self.mode_before_text = "mosaic"
@@ -529,15 +646,42 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         # Per image (while it stays open in this tab): {revision: TextState}.
         self.text_store: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
         self.text_selected = False
-        self.shape_combo = QComboBox()
+        # The shape: five icons. The combo box (never shown) holds the choice for settings and presets.
+        self.shape_combo = QComboBox(right)
         for text, value in [(tr("ブラシ"), "brush"), (tr("長方形"), "rectangle"), (tr("楕円"), "ellipse"), (tr("多角形"), "polygon"), (tr("投げ縄"), "lasso")]:
             self.shape_combo.addItem(text, value)
             self.shape_combo.setItemData(self.shape_combo.count() - 1, SHAPE_TIPS[value], Qt.ItemDataRole.ToolTipRole)
-        self.shape_combo.setMinimumContentsLength(12)
-        self.shape_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.shape_combo.hide()
         self.shape_combo.currentIndexChanged.connect(self.tool_changed)
-        tools.addWidget(self.shape_combo)
-        tools.addSpacing(2)
+        self.shape_row = QWidget()
+        shape = QVBoxLayout(self.shape_row)
+        shape.setContentsMargins(0, 0, 0, 0)
+        shape.setSpacing(6)
+        self.shape_label = ValueLabel()
+        shape.addWidget(self.shape_label)
+        segmented = QFrame()
+        segmented.setObjectName("segmented")
+        shapes = QHBoxLayout(segmented)
+        shapes.setContentsMargins(3, 3, 3, 3)
+        shapes.setSpacing(2)
+        self.shape_buttons = {}
+        for index in range(self.shape_combo.count()):
+            value = self.shape_combo.itemData(index)
+            button = QToolButton()
+            button.setObjectName("segment")
+            button.setIcon(icon(value))
+            button.setIconSize(QSize(18, 18))
+            button.setCheckable(True)
+            button.setAccessibleName(self.shape_combo.itemText(index))
+            button.setToolTip(self.shape_combo.itemText(index) + " · " + SHAPE_TIPS[value])
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setMinimumHeight(30)
+            button.clicked.connect(lambda *_args, number=index: self.shape_combo.setCurrentIndex(number))
+            shapes.addWidget(button)
+            self.shape_buttons[value] = button
+        shape.addWidget(segmented)
+        tools.addWidget(self.shape_row)
         # Each slider has a number box beside its name for typing a value directly.
         self.brush_label = ValueLabel()
         self.brush = QSlider(Qt.Orientation.Horizontal)
@@ -573,18 +717,11 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         fill.addWidget(self.strong_button)
         self.fill_row.hide()
         tools.addWidget(self.fill_row)
-        self.strength_description = self._label("", "faint")
-        tools.addWidget(self.strength_description)
-        tools.addSpacing(2)
-        self.details_toggle = self._disclosure(tr("詳細設定・その他"))
-        tools.addWidget(self.details_toggle)
-        self.tool_details = QWidget()
-        details = QVBoxLayout(self.tool_details)
-        details.setContentsMargins(0, 0, 0, 0)
-        details.setSpacing(8)
-        details.addWidget(self._label(tr("編集プリセット"), "faint"))
-        self.build_presets(details)
-        expansion_label = self._label(tr("範囲の拡張"), "faint")
+        self.expansion_row = QWidget()
+        expansion_layout = QVBoxLayout(self.expansion_row)
+        expansion_layout.setContentsMargins(0, 0, 0, 0)
+        expansion_layout.setSpacing(6)
+        expansion_label = self._label(tr("範囲の拡張"), "muted")
         self.expansion = QSlider(Qt.Orientation.Horizontal)
         self.expansion.setRange(0, 3)
         self.expansion.setValue(START_TOOL["expansion"])
@@ -596,9 +733,30 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.expansion.setAccessibleName(tr("範囲の拡張"))
         self.expansion.valueChanged.connect(self.tool_changed)
         self.expansion_box = slider_with_box(self.expansion, " px", tr("範囲の拡張（数値）"))
-        details.addLayout(self._slider_heading(expansion_label, self.expansion_box))
-        details.addWidget(self.expansion)
-        details.addWidget(self._label(tr("画像の回転・反転"), "faint"))
+        expansion_layout.addLayout(self._slider_heading(expansion_label, self.expansion_box))
+        expansion_layout.addWidget(self.expansion)
+        tools.addWidget(self.expansion_row)
+        self.strength_description = self._label("", "faint")
+        tools.addWidget(self.strength_description)
+        presets = QVBoxLayout()
+        presets.setSpacing(6)
+        presets.addWidget(self._label(tr("編集プリセット"), "muted"))
+        self.build_presets(presets)
+        tools.addLayout(presets)
+        tools.addSpacing(2)
+        tools.addWidget(divider())
+        # Changing the whole image (rather than an area of it): folded until needed.
+        self.details_toggle = self._disclosure(tr("画像の調整"))
+        self.details_toggle.setToolTip(tr("切り抜き・回転・反転・色調（超解像は「⋯ → その他」）"))
+        tools.addWidget(self.details_toggle)
+        self.tool_details = QWidget()
+        details = QVBoxLayout(self.tool_details)
+        details.setContentsMargins(0, 0, 0, 0)
+        details.setSpacing(8)
+        self.crop_tool = self._button(tr("切り抜き・寸法の変更…"), lambda: self.editor_actions["edit"].trigger(),
+                                      tr("画像を切り抜く · 切り抜きと寸法の変更"))
+        self.crop_tool.setIcon(icon("crop"))
+        details.addWidget(self.crop_tool)
         turns = QGridLayout()
         turns.setSpacing(6)
         self.transform_buttons = []
@@ -613,7 +771,6 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
             self.transform_buttons.append(button)
             turns.addWidget(button, *divmod(number, 2))
         details.addLayout(turns)
-        details.addWidget(self._label(tr("色調"), "faint"))
         self.color_button_adjust = self._button(tr("色調の調整…"), lambda: self.editor_actions["color"].trigger(),
                                                 tr("明るさ・コントラスト・彩度・色相などを、プレビューを見ながら調整します。"))
         details.addWidget(self.color_button_adjust)
@@ -635,99 +792,122 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.read_only_note.setContentsMargins(16, 14, 16, 12)
         self.read_only_note.hide()
         outer.addWidget(self.read_only_note, 1)
-
+        # Taking the shown image back (its edits, or the file before overwriting) is apart from the tools.
         footer = QFrame()
         footer.setObjectName("panelFooter")
-        review = QVBoxLayout(footer)
-        review.setContentsMargins(16, 12, 16, 14)
-        review.setSpacing(8)
-        # オリジナルタグ first, folded by default; the labels stay at the very bottom.
-        tag_heading = QHBoxLayout()
-        tag_heading.setSpacing(6)
-        self.quick_tag_toggle = self._disclosure(tr("オリジナルタグ"))
-        self.quick_tag_toggle.setToolTip(tr("よく使うタグのボタンを表示します。"))
-        self.quick_tag_toggle.toggled.connect(self.show_quick_tags)
-        tag_heading.addWidget(self.quick_tag_toggle)
-        tag_heading.addStretch(1)
-        self.quick_tag_edit = tool_button("tag", tr("オリジナルタグの編集 · 追加・名前の変更・削除・並べ替え"), self.edit_quick_tags,
-                                          text=tr("編集"), variant="ghost")
-        tag_heading.addWidget(self.quick_tag_edit)
-        review.addLayout(tag_heading)
-        self.quick_tag_panel = QWidget()
-        self.quick_tag_grid = QGridLayout(self.quick_tag_panel)
-        self.quick_tag_grid.setContentsMargins(0, 0, 0, 4)
-        self.quick_tag_grid.setSpacing(6)
-        self.quick_tag_panel.hide()
-        review.addWidget(self.quick_tag_panel)
-        self.quick_tag_buttons: list[QPushButton] = []
-        self.quick_tags = quick_tags(self.preferences.data)
-        self.build_quick_tag_buttons()
-        review.addWidget(divider())
-        heading = QHBoxLayout()
-        heading.addWidget(section_label(tr("仕分け")))
-        heading.addStretch(1)
-        self.review_hint = ElidedLabel()
-        self.review_hint.setMaximumWidth(160)
-        self.review_hint.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
-        self.review_hint.setObjectName("faint")
-        heading.addWidget(self.review_hint)
-        review.addLayout(heading)
-        self.auto_advance = QCheckBox(tr("ラベルを付けたら次へ"))
-        self.auto_advance.setChecked(AUTO_ADVANCE_DEFAULT)
-        review.addWidget(self.auto_advance)
-        label_row = QHBoxLayout()
-        label_row.setSpacing(6)
-        self.label_buttons = {}
-        for number, (label, text) in enumerate(REVIEW_LABELS.items(), 1):
-            button = self._button(text, lambda checked=False, value=label: self.press_label(value),
-                                  tr("{number} · 複数選択した画像にはまとめて付けます。外すときは「ラベルを解除」（Alt+0）。").format(number=number))
-            button.setObjectName("reviewLabel")
-            button.setProperty("label", label)
-            button.setCheckable(True)
-            self.label_buttons[label] = button
-            label_row.addWidget(button)
-        review.addLayout(label_row)
+        foot = QVBoxLayout(footer)
+        foot.setContentsMargins(14, 10, 14, 12)
+        foot.setSpacing(8)
+        self.reset_edits_button = self._button(tr("加工・マスクを初期化"), self.reset_edits_action.trigger,
+                                               self.reset_edits_action.toolTip())
+        foot.addWidget(self.reset_edits_button)
+        self.restore_original_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        foot.addWidget(self.restore_original_button)
         outer.addWidget(footer)
         return container
 
-    def _build_status_bar(self):
-        bottom = QFrame()
-        bottom.setObjectName("statusBar")
-        status = QHBoxLayout(bottom)
-        status.setContentsMargins(16, 4, 10, 4)
-        status.setSpacing(6)
+    def _build_toast(self, parent):
+        """Results and errors, briefly at the foot of the image (where the work was done).
+
+        ``status`` keeps the latest message. Results fade after a few seconds, errors stay until
+        closed or replaced, and work that takes a while shows its progress and 「中止」 here.
+        """
+        toast = self.toast = QFrame(parent)
+        toast.setObjectName("toast")
+        toast.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        row = QHBoxLayout(toast)
+        row.setContentsMargins(14, 6, 6, 6)
+        row.setSpacing(10)
         self.status = QLabel("")
         self.status.setObjectName("status")
-        self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.status.setMinimumHeight(28)
-        status.addWidget(self.status, 1)
+        self.status.setWordWrap(True)
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
+        self.status.setMinimumHeight(24)
+        row.addWidget(self.status, 1)
         self.progress = QProgressBar()
-        self.progress.setFixedWidth(90)
+        self.progress.setFixedWidth(72)
         self.progress.setRange(0, 0)
         self.progress.setTextVisible(False)
         self.progress.hide()
-        status.addWidget(self.progress)
+        row.addWidget(self.progress)
         self.cancel_button = self._button(tr("中止"), self.cancel_work, variant="ghost")
         self.cancel_button.hide()
-        status.addWidget(self.cancel_button)
-        status.addSpacing(8)
-        # The shown image's size, beside the zoom.
-        self.image_size_label = QLabel()
-        self.image_size_label.setObjectName("muted")
-        status.addWidget(self.image_size_label)
-        status.addSpacing(6)
-        self.zoom_label = ZoomField()
-        self.zoom_label.zoomRequested.connect(lambda percent: self.canvas.zoom(percent / 100 / self.canvas.scale))
-        fit = self.fit_button = tool_button("fit", tr("画面に合わせる · F"), self.canvas.fit, text=tr("全体"), variant="ghost")
-        actual = self.actual_size_button = self._button(tr("原寸"), lambda: self.canvas.zoom(1 / self.canvas.scale), "Ctrl+1 · 100%", variant="ghost")
-        self.view_controls = [self.crop_tool, self.compare_button, self.mask_toggle, self.zoom_label, fit, actual]
-        for widget in (self.zoom_label, fit, actual):
-            status.addWidget(widget)
-        # Shown on the start page only, and not while something is loading.
-        self.credit = QLabel(COPYRIGHT)
-        self.credit.setObjectName("faint")
-        status.addWidget(self.credit)
-        return bottom
+        row.addWidget(self.cancel_button)
+        self.toast_close = tool_button("close", tr("閉じる"), self.hide_toast)
+        row.addWidget(self.toast_close)
+        toast.hide()
+        self.toast_timer = QTimer(self)
+        self.toast_timer.setSingleShot(True)
+        self.toast_timer.timeout.connect(self.hide_toast)
+        self.toast_delay = QTimer(self)
+        self.toast_delay.setSingleShot(True)
+        self.toast_delay.setInterval(600)
+        self.toast_delay.timeout.connect(lambda: self.show_toast(None))
+        self.hint_shown = False
+        parent.installEventFilter(self)
+
+    def show_toast(self, timeout):
+        """Show the current message; ``timeout`` in ms, or None to keep it until it is replaced."""
+        if not self.status.text() and self.progress.isHidden():
+            self.hide_toast()
+            return
+        self.toast_timer.stop()
+        self.toast_close.setVisible(self.cancel_button.isHidden())
+        self.toast.show()
+        self.place_toast()
+        if timeout:
+            self.toast_timer.start(timeout)
+
+    def hide_toast(self):
+        self.toast_timer.stop()
+        self.toast_delay.stop()
+        self.toast.hide()
+
+    def place_toast(self):
+        """Centre the message near the foot of the image (or of the start page)."""
+        if not hasattr(self, "toast") or self.toast.isHidden():
+            return
+        root = self.toast.parentWidget()
+        if self.pages.currentWidget() is self.splitter and self.canvas.isVisible():
+            area = self.canvas.geometry()
+            area.moveTopLeft(self.canvas.mapTo(root, self.canvas.rect().topLeft()))
+        else:
+            area = self.pages.geometry()
+        width = max(160, min(560, area.width() - 32))
+        self.toast.setFixedWidth(min(width, self.toast.layout().sizeHint().width() + 8))
+        self.toast.adjustSize()
+        self.toast.move(area.center().x() - self.toast.width() // 2, area.bottom() - self.toast.height() - 14)
+        self.toast.raise_()
+
+    def present_status(self, message, error=False):
+        """Decide how a new message is shown: an error stays, a result shows briefly, progress
+        appears only if the work takes a while, and the usual drawing hint only once per tab."""
+        self.toast.setProperty("tone", "danger" if error else "")
+        repolish(self.toast)
+        if error:
+            self.toast_delay.stop()
+            self.show_toast(None)
+            return
+        if not message:
+            if self.progress.isHidden():
+                self.hide_toast()
+            return
+        if hasattr(self, "auto") and message == self.ready_hint():
+            if not self.hint_shown and self.isVisible():
+                self.hint_shown = True
+                self.show_toast(6000)
+            elif self.toast.isVisible() and not self.toast_timer.isActive():
+                # Progress that has ended (nothing of the previous message remains to read).
+                self.hide_toast()
+            return
+        if message.endswith("…"):
+            if self.toast.isHidden():
+                self.toast_delay.start()
+            else:
+                self.show_toast(None)
+            return
+        self.toast_delay.stop()
+        self.show_toast(min(9000, 2500 + 45 * len(message)))
 
     def _build_save_popover(self):
         self.save_popover = Popover(self, 340)
@@ -829,9 +1009,42 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.tool_details.setVisible(show)
         self.details_toggle.setIcon(icon("chevron_down" if show else "chevron_right", "text_muted"))
 
-    def show_quick_tags(self, show):
-        self.quick_tag_panel.setVisible(show)
-        self.quick_tag_toggle.setIcon(icon("chevron_down" if show else "chevron_right", "text_muted"))
+    def toggle_library_panel(self):
+        self.auto_folded.discard("library")
+        self.set_panel_shown("library", self.library_panel.isHidden())
+
+    def toggle_tools_panel(self):
+        self.auto_folded.discard("tools")
+        self.set_panel_shown("tools", self.tools_panel.isHidden())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fold_panels_to_fit(event.size().width())
+
+    def fold_panels_to_fit(self, width):
+        """Fold the tools below ~1100 px and the list below ~720 px; bring back only what was folded
+        this way once there is room again (a panel folded by hand stays folded)."""
+        if not AUTO_FOLD["enabled"] or not hasattr(self, "tools_panel"):
+            return
+        for which, panel in (("tools", self.tools_panel), ("library", self.library_panel)):
+            limit = AUTO_FOLD[which]
+            if width < limit and not panel.isHidden():
+                self.auto_folded.add(which)
+                self.set_panel_shown(which, False)
+            elif width >= limit + 40 and which in self.auto_folded:
+                self.auto_folded.discard(which)
+                self.set_panel_shown(which, True)
+
+    def set_panel_shown(self, which, shown):
+        """Fold or show the list (left) or the tools (right); the image takes the room."""
+        panel, button = ((self.library_panel, self.library_toggle) if which == "library"
+                         else (self.tools_panel, self.tools_toggle))
+        panel.setVisible(shown)
+        names = {("library", True): tr("一覧を隠す"), ("library", False): tr("一覧を表示"),
+                 ("tools", True): tr("道具を隠す"), ("tools", False): tr("道具を表示")}
+        key = self.shortcut_hint("toggle_library" if which == "library" else "toggle_tools") if hasattr(self, "bindings") else ""
+        button.setToolTip(names[which, shown] + (" · " + key if key else ""))
+        button.setAccessibleName(names[which, shown])
 
 
     def _shortcuts(self):
@@ -863,6 +1076,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
             **{name: (lambda index=number: self.press_quick_tag(index)) for number, name in enumerate(QUICK_TAG_COMMANDS)},
             "copy_image": self.copy_image, "cut_files": lambda: self.clip_files(cut=True), "paste_image": self.paste_image,
             "fullscreen": self.toggle_fullscreen,
+            "toggle_library": self.toggle_library_panel, "toggle_tools": self.toggle_tools_panel,
         }
         self.shortcuts = []
         for name, handler in handlers.items():
@@ -912,7 +1126,8 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.file_label.rename_hint = self.shortcut_hint("rename")
         self.file_label.setToolTip(self.file_label.text() + tr("\nダブルクリックで名前を変更") +
                                   (" · " + self.file_label.rename_hint if self.file_label.rename_hint else ""))
-        self.review_hint.setText(" / ".join(self.shortcut_hint(name) or tr("未設定") for name in REVIEW_LABELS))
+        for which, panel in (("library", self.library_panel), ("tools", self.tools_panel)):
+            self.set_panel_shown(which, not panel.isHidden())
         for name, label in self.key_hints.items():
             label.set_key(self.shortcut_hint(name))
         for label, button in self.label_buttons.items():
@@ -934,15 +1149,15 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
             self.update_controls()
 
     def eventFilter(self, watched, event):
-        if event.type() == QEvent.Type.Resize and watched is getattr(self, "library_panel", None):
-            self.update_library_actions_layout(event.size().width())
         if event.type() == QEvent.Type.Resize and watched is getattr(self, "image_bar", None):
-            # The state and the two buttons need about this much room on one row.
-            self.arrange_image_bar(event.size().width() < 640)
-        if event.type() == QEvent.Type.Resize and watched is getattr(self, "canvas_header", None):
-            # Keep the file name readable in narrow windows: sharing becomes icon-only.
-            compact = event.size().width() < 560
-            self.share_button.setText("" if compact else tr("共有…"))
+            # Everything on one row when it fits; otherwise the state and actions take a second row.
+            self.arrange_image_bar(event.size().width() < self.image_bar_needs())
+        if event.type() == QEvent.Type.Resize and watched is getattr(self, "view_bar", None):
+            needs = self.sort_group.sizeHint().width() + self.view_group.sizeHint().width() + 28
+            self.arrange_view_bar(event.size().width() < needs)
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move) and (
+                watched is getattr(self, "canvas", None) or watched is getattr(self, "root", None)):
+            self.place_toast()
         if (event.type() == QEvent.Type.KeyRelease and getattr(self, "compare_key", None) == event.key()):
             if not event.isAutoRepeat():
                 self.compare_key = None
@@ -1001,16 +1216,17 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         return job
 
     def error(self, message):
+        """What went wrong and what to do: stays at the foot of the image until closed or replaced."""
         self.last_error = str(message)
         self.status.setText(message)
         self.status.setToolTip(str(message))
-        self.status.setStyleSheet(f"color: {TOKENS['danger']}")
+        self.present_status(str(message), error=True)
         self.update_controls()
 
     def info(self, message):
-        self.status.setStyleSheet("")
         self.status.setText(message)
         self.status.setToolTip(str(message))
+        self.present_status(str(message or ""))
 
     def report(self, message):
         """The result of an operation that also moved on to another image: shown now, and again once
@@ -1052,6 +1268,8 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.restore_original_action.setEnabled(has and idle and originals().has(self.document.path))
         kept = self.keep_originals.isChecked() and self.overwrite.isChecked()
         self.restore_original_button.setEnabled(kept and self.restore_original_action.isEnabled())
+        # Only while originals are overwritten and kept: the one case where it can do anything.
+        self.restore_original_button.setVisible(kept and has)
         self.restore_original_button.setToolTip(
             tr("この起動中に最初に上書きする前の元画像に戻します。実行前に確認します。") if self.restore_original_button.isEnabled()
             else tr("保存方法の「上書き前の元画像を一時的に残す」がオフのため使えません。") if not kept
@@ -1088,7 +1306,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.save_settings.setEnabled(idle)
         self.reload_action.setEnabled(idle and bool(self.workspace_inputs))
         overwrite = self.overwrite.isChecked()
-        self.save_next_button.setText(tr("上書きして次へ →") if overwrite else tr("保存して次へ →"))
+        self.save_next_button.setText(tr("上書きして次へ") if overwrite else tr("保存して次へ"))
         self.manual_save.setText(tr("上書き保存") if overwrite else tr("保存"))
         self.action_hint(self.manual_save, "save")
         self.metadata_button.setText(tr("メタデータを削除して上書き") if overwrite else tr("メタデータを削除して保存"))
@@ -1101,14 +1319,13 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
                 self.save_popover.fit_content()
         self.folder_label.setText(tr("元画像と同じ場所・名前・形式") if overwrite else str(self.output_folder or tr("画像のあるフォルダー / Sumīre")))
         self.batch_button.setEnabled(paths and idle)
-        self.batch_delete_button.setEnabled(paths and idle)
         self.auto.setEnabled(not blocked)
         self.sort_combo.setEnabled(paths and idle)
         self.rename_button.setEnabled(has and idle)
         self.file_label.setEnabled(has and idle)
         self.number_button.setEnabled(paths and idle)
         self.shape_combo.setEnabled(not blocked)
-        for _, button in self.mode_buttons:
+        for button in (*self.shape_buttons.values(), *(button for _, button in self.mode_buttons)):
             button.setEnabled(not blocked)
         self.brush.setEnabled(not blocked and self.shape_combo.currentData() == "brush")
         self.brush_box.setEnabled(self.brush.isEnabled())
@@ -1120,12 +1337,17 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         cancellable = self.loading or self.saving or self.batch_job is not None or self.novelai_job is not None
         self.progress.setVisible((cancellable or self.finalizing) and self.batch_job is None)
         self.cancel_button.setVisible(cancellable)
+        if self.toast.isVisible():
+            self.toast_close.setVisible(not cancellable)
         self.update_save_state()
         self.update_folder_controls(idle)
         self.file_label.setText(self.document.path.name if has else "")
         self.update_page()
         self.update_workbench_controls()
         self.apply_read_only_controls()
+        if self.image_bar.width() > 0:
+            # Shown or hidden actions change what fits on one row.
+            self.arrange_image_bar(self.image_bar.width() < self.image_bar_needs())
         self.stateChanged.emit()
 
     def save_mode_text(self):
@@ -1139,20 +1361,21 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.save_mode_button.setToolTip(tr("保存方法：{save_mode_text}\nクリックで保存方法・保存先・メタデータの退避を変更").format(save_mode_text=self.save_mode_text())
                                          + (tr("\n元画像を置き換えます（バックアップなし）。") if overwrite else ""))
         document = self.document
+        # Told in words with a plain mark; colour is kept for the review labels (and for a failure).
         if document is None:
-            text, tone, tip = "", "neutral", ""
+            text, mark, tone, tip = "", "", "text_muted", ""
         elif self.saving:
-            text, tone, tip = tr("保存中…"), "info", tr("保存して、書き出した画像を確かめています。")
+            text, mark, tone, tip = tr("保存中…"), "○", "text_muted", tr("保存して、書き出した画像を確かめています。")
         elif self.save_failed and document.dirty:
-            text, tone, tip = tr("保存失敗"), "danger", tr("編集は残っています。「保存」で再試行できます。")
+            text, mark, tone, tip = tr("保存失敗"), "!", "danger", tr("編集は残っています。「保存」で再試行できます。")
         elif document.dirty:
-            text, tone = tr("未保存"), "warn"
+            text, mark, tone = tr("未保存"), "●", "text"
             tip = tr("まもなく自動保存します。") if self.auto.isChecked() else tr("「保存」、または「保存して次へ」で保存します。")
         elif document.saved_revision == document.revision and document.output:
-            text, tone, tip = tr("保存済み"), "ok", tr("保存済み\n{output}").format(output=document.output)
+            text, mark, tone, tip = tr("保存済み"), "✓", "text_muted", tr("保存済み\n{output}").format(output=document.output)
         else:
-            text, tone, tip = tr("未編集"), "neutral", tr("まだ編集・保存していません。")
-        self.save_state.setText(f'<span style="color:{TOKENS[tone]}">●</span>&nbsp;{text}' if text else "")
+            text, mark, tone, tip = tr("未編集"), "", "text_muted", tr("まだ編集・保存していません。")
+        self.save_state.setText(f'<span style="color:{TOKENS[tone]}">{mark}&nbsp;{text}</span>' if text else "")
         self.save_state.setToolTip(tip)
         self.save_state.setAccessibleName(tr("保存状態：{text}").format(text=text) if text else "")
         self.update_metadata_state()
@@ -1174,6 +1397,10 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
             text, tip = tr("メタデータ：無し"), tr("対応する種類のメタデータは見つかりませんでした。クリックで確認できます。")
         self.metadata_state.setText(text)
         self.metadata_state.setToolTip(tip)
+        # Deleting is offered while there is (or may be) something to delete.
+        self.metadata_delete_button.setVisible(document is not None and (found is None or bool(found))
+                                               and not getattr(document, "project", False)
+                                               and not self.is_clipboard_path(document.path))
         self.metadata_state.setProperty("found", bool(found))
         self.metadata_state.style().unpolish(self.metadata_state)
         self.metadata_state.style().polish(self.metadata_state)
@@ -1278,9 +1505,9 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
                 self.canvas.setFocus()
             else:
                 self.refresh_welcome()
+                self.welcome.setFocus()
         for widget in self.workspace_widgets:
             widget.setVisible(workspace)
-        self.credit.setVisible(not workspace and self.progress.isHidden() and self.cancel_button.isHidden())
         self.workspace_label.setText((self.folder_location(tab_name=True) or self.workspace_title()) if workspace else "")
         self.workspace_label.setToolTip(tr("現在の作業対象\n") + "\n".join(self.workspace_inputs) if workspace else tr("画像・フォルダーは「ファイル」から開けます。"))
         if not workspace:
@@ -1387,7 +1614,7 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         for widget in (self.strength, self.strength_label, self.strength_box):
             widget.setVisible(mode not in ("erase", "text"))
         # Text has its own settings (in the dialog that opens on a click); the area tools do not apply.
-        for widget in (self.shape_combo, self.brush, self.brush_label, self.brush_box):
+        for widget in (self.shape_row, self.brush, self.brush_label, self.brush_box, self.expansion_row):
             widget.setVisible(mode != "text")
         if mode != "text":
             self.canvas.text_drag = None
@@ -1603,12 +1830,16 @@ class Window(ArchiveFeatures, FolderFeatures, OutputFeatures, EditorFeatures, Ap
         self.strength_description.setVisible(bool(self.strength_description.text()))
         self.canvas.tool = self.tool()
         self.canvas.shape = self.shape_combo.currentData()
+        for value, button in self.shape_buttons.items():
+            button.setChecked(value == self.canvas.shape)
+        self.shape_label.set_parts(tr("形"), self.shape_combo.currentText())
         if not self.canvas.space_down and self.canvas.pan_start is None and (
                 self.mode == "text" or self.canvas.cursor().shape() == Qt.CursorShape.IBeamCursor):
             self.canvas.setCursor(self.canvas.tool_cursor())
         self.inverse_action.setEnabled(not self.busy() and not self.saving and self.canvas.shape != "brush")
         self.shape_combo.setToolTip(SHAPE_TIPS[self.canvas.shape]
                                     + (tr("\n囲んだ範囲の外側に適用します。") if self.canvas.invert_selection and self.canvas.shape != "brush" else ""))
+        self.shape_label.setToolTip(self.shape_combo.toolTip())
         key = (self.document, self.document.revision, self.tool().effect_key) if self.document else None
         if not self.canvas.stroke and (key != self.prepared_effect_key or self.canvas.effect is None):
             self.canvas.ready = False

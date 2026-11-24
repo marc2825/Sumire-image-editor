@@ -171,7 +171,7 @@ def test_writing_is_refused_in_a_zip(qtbot, opened, zipped, tmp_path, monkeypatc
                    opened.workflow_actions["convert_selected"], opened.workflow_actions["collage"], opened.share_button,
                    opened.erase_button, opened.text_button):
         assert not widget.isEnabled(), widget
-    assert opened.canvas.locked and opened.save_next_button.text() == "次へ →"
+    assert opened.canvas.locked and opened.save_next_button.text() == "次へ"
     assert opened.tools_scroll.isHidden() and not opened.read_only_note.isHidden()  # a note instead of the tools
     assert opened.list.editTriggers() == opened.list.EditTrigger.NoEditTriggers
     monkeypatch.setattr(Window, "confirm_dialog", lambda self, dialog, **kwargs: True)

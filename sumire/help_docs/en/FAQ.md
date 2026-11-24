@@ -36,11 +36,11 @@ By default, metadata is kept when you save edits. To remove it, use “Remove me
 
 ## I only want to remove metadata
 
-Use “Remove metadata” above the image for the shown image, “Remove all metadata” above the list for every image in the tab, or right-click → “Remove metadata and save” for selected images. No tracing needed.
+Use “Remove metadata” above the image for the shown image, “Export and batch → Remove metadata from all images…” below the list for every image in the tab, or right-click → “Remove metadata and save” for selected images. No tracing needed.
 
 ## I want smaller files or another format
 
-Right-click → “Reduce file size” or “Convert format” (for the whole list, the list's “⋯”). Originals stay; new files go into a new folder.
+Right-click → “Reduce file size” or “Convert format” (for the whole list, “Export and batch” below the list). Originals stay; new files go into a new folder.
 The JPEG quality used for normal saves is under “Settings (gear) → Save” (1–100, default 95).
 
 ## HEIC images do not open

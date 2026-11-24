@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QDesktopServices, QDrag, QImage, QPainter, QPa
 from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QVBoxLayout
 
 from .export import check_cancel, save_image
+from .theme import TOKENS
 from .imaging import ImageProblem
 from .canvas import qimage
 from .stealth import remove_stealth
@@ -197,7 +198,7 @@ class CropPreview(QLabel):
         for third in (1, 2):
             painter.drawLine(QPointF(left + (right - left) * third / 3, top), QPointF(left + (right - left) * third / 3, bottom))
             painter.drawLine(QPointF(left, top + (bottom - top) * third / 3), QPointF(right, top + (bottom - top) * third / 3))
-        painter.setPen(QPen(QColor("#a8dfc2"), 1.5))
+        painter.setPen(QPen(QColor(TOKENS["accent"]), 1.5))
         painter.drawRect(frame.adjusted(0.75, 0.75, -0.75, -0.75))
         # L-shaped corner grips: the parts to drag.
         painter.setPen(QPen(QColor("#ffffff"), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.SquareCap))

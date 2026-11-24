@@ -153,10 +153,11 @@ def test_label_export_moves_into_a_numbered_label_folder_by_default(qtbot, windo
     paths = list(page.model.paths)
     labels = {path.name: path.read_bytes() for path in paths}
     page.write_labels({paths[0]: "accepted", paths[2]: "accepted"}, {paths[0]: None, paths[2]: None})
-    assert page.export_accepted_button.isEnabled() and page.export_accepted_button.text() == "ラベルごとに書き出す…"
+    export = page.workflow_actions["export_accepted"]
+    assert export.isEnabled() and export.text() == "ラベルごとに書き出す…" and export in page.library_menu.actions()
     seen = []
     monkeypatch.setattr(type(page), "confirm_dialog", confirm_with(seen))
-    page.export_accepted_button.click()
+    export.trigger()
     qtbot.waitUntil(lambda: not page.finalizing and "ラベルごとに移動しました" in page.status.text(), timeout=20000)
     folder = paths[0].parent / "採用"
     assert seen == ["LabelExportDialog"]

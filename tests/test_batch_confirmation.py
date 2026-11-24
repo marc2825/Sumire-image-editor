@@ -60,7 +60,8 @@ def test_cancel_confirms_whole_tab_even_when_filtered(qtbot, window, monkeypatch
     monkeypatch.setattr(window, "guard", lambda action: guarded.append(action))
     observed = reply_to_confirmation()
     if entry == "button":
-        window.batch_delete_button.click()
+        # The command of the list's 「書き出しと一括処理」 menu.
+        next(action for action in window.library_menu.actions() if action is window.batch_button).trigger()
     else:
         window.batch_button.trigger()
     assert observed["title"] == "メタデータの一括削除を確認"
@@ -128,7 +129,7 @@ def test_confirmed_deletion_uses_only_paths_listed_in_dialog(qtbot, window, patt
         window.replace_list([*paths, later])
 
     observed = reply_to_confirmation(QMessageBox.StandardButton.Ok, during=add_image)
-    window.batch_delete_button.click()
+    window.batch_button.trigger()
     qtbot.waitUntil(lambda: window.batch_job is None and "一括処理完了" in window.status.text(), timeout=15000)
     assert observed["paths"].splitlines() == [str(path) for path in paths]
     assert "保存 3 / 失敗 0" in window.status.text()

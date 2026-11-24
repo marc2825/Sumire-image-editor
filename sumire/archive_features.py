@@ -251,14 +251,14 @@ class ArchiveFeatures:
         workflow = ("save_as", "save_selected", "delete_selected", "number_selected", "cut_files", "copy_files", "paste_files",
                     "duplicates", "convert_all", "compress_all", "convert_selected", "compress_selected", "collage",
                     "merge_labels", "export_accepted", "reset_list")
-        return [self.manual_save, self.metadata_button, self.metadata_delete_button, self.batch_button, self.batch_delete_button, self.export_accepted_button,
+        return [self.manual_save, self.metadata_button, self.metadata_delete_button, self.batch_button,
                 self.rename_button, self.file_label, self.number_button, self.restore_original_button, self.restore_original_action,
                 self.metadata_restore, self.mask_export, self.reset_edits_action, self.reset_edits_button, self.crop_tool,
                 self.share_button, *self.share_actions.values(), self.editor_actions["edit"], self.editor_actions["color"],
                 self.editor_actions["upscale"], self.app_actions["save_project"], *(self.workflow_actions[key] for key in workflow),
                 self.new_folder_button, self.shape_combo, self.brush, self.brush_box, self.strength, self.strength_box,
                 self.expansion, self.expansion_box, *self.transform_buttons, self.color_button_adjust, self.auto_sort_action,
-                *(button for _, button in self.mode_buttons), self.weak_button, self.strong_button, self.color_button]
+                *(button for _, button in self.mode_buttons), *self.shape_buttons.values(), self.weak_button, self.strong_button, self.color_button]
 
     def apply_read_only_controls(self):
         archive = self.archive is not None
@@ -272,7 +272,7 @@ class ArchiveFeatures:
             widget.setEnabled(False)
         self.canvas.locked = True  # no strokes or text; zoom and panning stay
         self.workflow_actions["export_archive"].setEnabled(bool(self.document or self.selected_paths()) and not self.busy() and not self.saving)
-        self.save_next_button.setText(tr("次へ →"))
+        self.save_next_button.setText(tr("次へ"))
         self.save_next_button.setEnabled(self.document is not None and not self.busy())
 
 

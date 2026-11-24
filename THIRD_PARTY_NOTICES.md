@@ -4,7 +4,7 @@ Sumīre 自身のソースコードは [MIT License](LICENSE)（Copyright (c) 20
 
 Windows版の配布物には、次のソフトウェアとフォントが入っています。それぞれのライセンスは、Sumīre の MIT License とは別に、そのまま適用されます。ライセンス文は配布物の `licenses` フォルダーにあります。
 
-## Windows版に入っているもの（1.5.0）
+## Windows版に入っているもの（1.6.0）
 
 | 名前 | 版 | ライセンス | ライセンス文・説明 |
 | --- | --- | --- | --- |
@@ -18,7 +18,7 @@ Windows版の配布物には、次のソフトウェアとフォントが入っ�
 | Microsoft Visual C++ ランタイム・Universal CRT（`VCRUNTIME140.dll`、`MSVCP140*.dll`、`ucrtbase.dll`、`api-ms-win-*.dll`） | — | Microsoft の再頒布可能なファイル | Python と PySide6 に付属して入っています。条件は `licenses/Python/LICENSE.txt` の「Additional Conditions for this Windows binary build」を参照 |
 
 - Qt は商用ライセンスでも提供されていますが、Sumīre は LGPL v3 の条件で使っています。
-- Qt と PySide6 の各ファイルは、PyPI の wheel に入っていたものを改変せずに入れています。対応するソースコードは `Sumire-v1.5.0-qt-pyside6-source.zip` として配布物と同じ場所から入手できます（[QT_REPLACEMENT.md](QT_REPLACEMENT.md)）。
+- Qt と PySide6 の各ファイルは、PyPI の wheel に入っていたものを改変せずに入れています。対応するソースコードは `Sumire-v1.6.0-qt-pyside6-source.zip` として配布物と同じ場所から入手できます（[QT_REPLACEMENT.md](QT_REPLACEMENT.md)）。
 - HEIC の読み書きに使う pillow-heif・pi-heif は、ライセンスの都合で配布物に入れていません。
 - Noto Sans JP は、[Noto CJK の公式リポジトリ](https://github.com/notofonts/noto-cjk)の `Sans/SubsetOTF/JP` から取得したもので、改変していません。アプリが起動するときにだけ読み込み、Windows にはインストールしません。
 

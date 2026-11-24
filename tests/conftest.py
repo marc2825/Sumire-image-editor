@@ -31,6 +31,8 @@ def quiet_overwrite_notice(monkeypatch, tmp_path):
     monkeypatch.setitem(window.OVERWRITE_NOTICE, "shown", True)
     # Closing the app asks first; that dialog has its own test.
     monkeypatch.setitem(workspace_tabs.QUIT_CONFIRMATION, "enabled", False)
+    # The offscreen screen is small; folding the panels to fit it has its own test.
+    monkeypatch.setitem(window.AUTO_FOLD, "enabled", False)
     # Most tests check that saving removes metadata; keeping it is covered by tests that switch this back off.
     monkeypatch.setattr(window, "STRIP_METADATA_DEFAULT", True)
     # Labelling tests check the labelled image; moving on has its own test.

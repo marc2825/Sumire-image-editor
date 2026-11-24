@@ -14,6 +14,7 @@ from .editing import COLOR_FIELDS, NEUTRAL_COLORS, EditSpec, adjust_colors, chec
 from .icons import icon
 from .imaging import ImageProblem
 from .novelai import CropPreview
+from .theme import TOKENS
 from .ui import section_label
 
 
@@ -443,16 +444,22 @@ class MetadataDialog(QDialog):
         if not groups:
             html.append(tr("<p>メタデータは見つかりませんでした。</p>"))
             plain.append(tr("メタデータは見つかりませんでした。"))
-        for category, items in groups.items():
-            html.append(f'<h3 style="margin:14px 0 4px 0">[{escape(category)}]</h3><table cellspacing="0" cellpadding="3" width="100%">')
+        # One table for every section, so the values start at the same place throughout.
+        if groups:
+            html.append('<table cellspacing="0" cellpadding="3" width="100%">')
+        for number, (category, items) in enumerate(groups.items()):
+            top = 4 if number == 0 else 16
+            html.append(f'<tr><td colspan="2" style="padding-top:{top}px; padding-bottom:4px; font-weight:700; '
+                        f'color:{TOKENS["text_strong"]}">{escape(category)}</td></tr>')
             plain.append(f"[{category}]")
             for item, content in items:
                 body = escape(content).replace("\n", "<br>")
-                html.append(f'<tr><td valign="top" style="white-space:nowrap; color:#9aa4b2; padding-right:12px">{escape(item)}</td>'
+                html.append(f'<tr><td valign="top" width="36%" style="color:{TOKENS["text_muted"]}; padding-right:12px">{escape(item)}</td>'
                             f'<td valign="top">{body}</td></tr>')
                 plain.append(tr("{item}：{content}").format(item=item, content=content))
-            html.append("</table>")
             plain.append("")
+        if groups:
+            html.append("</table>")
         self.text = "\n".join(plain).strip()
         view = QTextBrowser()
         view.setOpenLinks(False)

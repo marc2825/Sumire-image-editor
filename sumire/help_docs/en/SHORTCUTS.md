@@ -23,7 +23,7 @@ These are the default keys. Change them in “Settings (gear) → Shortcuts” a
 | Toggle the text tool | T |
 | Show the mask | M |
 | Compare with the original | Tab (while held) |
-| Zoom in / out | Wheel / + / −. You can also type a number into the zoom box at the bottom right and press Enter |
+| Zoom in / out | Wheel / + / −. You can also type a number into the zoom box below the image and press Enter |
 | Move the view | Space + drag / drag with the middle button |
 | Fit / actual size | F / Ctrl+1 |
 | Smaller / larger brush | [ / ] |
@@ -34,6 +34,8 @@ These are the default keys. Change them in “Settings (gear) → Shortcuts” a
 | Cut image files | Ctrl+X |
 | Paste (image files into the tab's folder; a picture opens as new) | Ctrl+V |
 | Full screen | F11 |
+| Show or hide the list | Ctrl+B |
+| Show or hide the tools | Ctrl+Shift+B |
 
 ## Fixed keys
 

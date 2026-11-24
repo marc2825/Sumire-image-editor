@@ -49,7 +49,7 @@ def test_review_buttons_are_coloured_before_they_are_chosen(window):
     style = window.styleSheet()
     for label in ("rejected", "pending"):
         assert f'QPushButton#reviewLabel[label="{label}"] {{' in style
-    assert "QPushButton#reviewLabel { padding: 7px 4px; font-weight: 600; color:" in style
+    assert "QPushButton#reviewLabel { padding: 6px 14px; font-weight: 700; color:" in style
 
 
 def test_reset_edits_button_has_a_frame_and_no_ellipsis(window):
@@ -123,10 +123,13 @@ def test_list_stays_draggable_and_drops_below_the_lower_half(window):
 
 def test_library_menu_lists_only_work_without_its_own_button(window):
     texts = [action.text().split("\t")[0] for action in window.library_menu.actions() if action.text()]
-    for gone in ("全画像のメタデータを一括削除", "仕分けをすべてリセット", "採用画像を書き出す…", "直前の整理操作を戻す",
+    # 「整理を戻す」 has its own button above the list; the whole-list work is all in this menu.
+    for gone in ("採用画像を書き出す…", "直前の整理操作を戻す",
                  "似ている画像を探す…", "失敗理由を確認・失敗分だけ再処理…", "一覧全体を縮小して書き出す…"):
         assert gone not in texts
-    assert "重複を削除…" in texts and "一覧全体の形式を変換…" in texts and "一覧全体の容量削減…" in texts
+    for present in ("全画像のメタデータを一括削除…", "仕分けをすべてリセット…", "ラベルごとに書き出す…",
+                    "重複を削除…", "一覧全体の形式を変換…", "一覧全体の容量削減…"):
+        assert present in texts
 
 
 def test_undo_arrow_follows_the_organisation_history(window):

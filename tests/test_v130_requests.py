@@ -94,7 +94,7 @@ def test_text_tool_writes_text_as_one_undoable_edit(qtbot, window, monkeypatch):
     idle(qtbot, window)
     assert document.image.tobytes() == before.tobytes() and document.edit_mask.getbbox() is None
     QTest.keyClick(window.canvas, Qt.Key.Key_T)
-    assert window.mode == "mosaic" and not window.shape_combo.isHidden()
+    assert window.mode == "mosaic" and not window.shape_row.isHidden()
 
 
 def test_cancelling_the_text_changes_nothing(qtbot, window, monkeypatch):
@@ -328,19 +328,15 @@ def test_placement_corners_follow_the_angle(qapp):
 
 # --- 1.4.0: the sorting area -------------------------------------------------------
 
-def test_labels_are_at_the_bottom_and_custom_tags_fold_above_them(qtbot, window):
-    footer = window.label_buttons["accepted"].parentWidget()
-    layout = footer.layout()
-    order = [layout.itemAt(index) for index in range(layout.count())]
-    assert order[-1].layout() is not None and window.label_buttons["accepted"] in [
-        order[-1].layout().itemAt(i).widget() for i in range(order[-1].layout().count())]
-    assert window.quick_tag_panel.isHidden()  # folded at first
-    window.quick_tag_toggle.setChecked(True)
-    assert not window.quick_tag_panel.isHidden()
-    assert window.workspace_settings()["quick_tags_open"] is True
-    tag_top = window.quick_tag_toggle.mapTo(footer, window.quick_tag_toggle.rect().topLeft()).y()
-    label_top = window.label_buttons["accepted"].mapTo(footer, window.label_buttons["accepted"].rect().topLeft()).y()
-    assert tag_top < label_top
+def test_labels_and_custom_tags_sit_under_the_image(qtbot, window):
+    # Sorting is where the image is: the labels first, then the custom tags beside them.
+    for button in (*window.label_buttons.values(), *window.quick_tag_buttons, window.quick_tag_edit):
+        assert window.view_bar.isAncestorOf(button)
+    assert window.canvas.geometry().bottom() <= window.view_bar.geometry().top()
+    label_right = window.label_buttons["rejected"].mapTo(window.view_bar, window.label_buttons["rejected"].rect().topRight()).x()
+    tag_left = window.quick_tag_buttons[0].mapTo(window.view_bar, window.quick_tag_buttons[0].rect().topLeft()).x()
+    assert label_right < tag_left
+    assert not window.quick_tag_panel.isHidden() and "quick_tags_open" not in window.workspace_settings()
 
 
 # --- issues #3 and #4 --------------------------------------------------------------

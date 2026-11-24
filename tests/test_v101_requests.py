@@ -17,7 +17,7 @@ from test_gui import draw, wait_saved, window  # noqa: F401  (fixture)
 def test_labels_are_accept_hold_reject_on_one_two_three(window):
     assert list(REVIEW_LABELS) == ["accepted", "pending", "rejected"]
     assert [button.text() for button in window.label_buttons.values()] == ["採用", "保留", "不採用"]
-    assert window.review_hint.text() == "1 / 2 / 3"
+    assert [window.key_hints[label].key for label in REVIEW_LABELS] == ["1", "2", "3"]
     QTest.keyClick(window.canvas, Qt.Key.Key_1)
     assert window.model.labels[window.document.path] == "accepted"
 
@@ -39,7 +39,8 @@ def test_moving_on_after_labelling_is_on_by_default(qtbot, monkeypatch, tmp_path
 
 def test_restore_button_follows_kept_originals(qtbot, window):
     button = window.restore_original_button
-    assert window.image_action_widgets == [window.metadata_delete_button, button, window.save_next_button]
+    # At the foot of the tools, beside 「加工・マスクを初期化」 (both take the shown image back).
+    assert button.parentWidget() is window.reset_edits_button.parentWidget()
     assert not button.isEnabled() and "まだ上書きしていません" in button.toolTip()
     draw(window)
     wait_saved(qtbot, window)
@@ -77,15 +78,16 @@ def test_search_finds_notes_as_well_as_names(qtbot, window):
 
 def test_compare_mask_and_eraser_show_their_keys(window):
     for name, button, key in (("compare", window.compare_button, "Tab"), ("mask", window.mask_toggle, "M"),
-                              ("eraser", window.erase_button, "E")):
+                              ("eraser", window.erase_button, "E"), ("text", window.text_button, "T"),
+                              ("accepted", window.label_buttons["accepted"], "1")):
         hint = window.key_hints[name]
-        # Inside the button, right after its text, small and underlined: 消しゴム（E）.
-        assert hint.key == key and hint.text() == f"（<u>{key}</u>）"
+        # Inside the button, small and underlined in its top right corner, like a keycap.
+        assert hint.key == key and hint.text() == f"<u>{key}</u>"
         assert hint.parent() is button and hint.isVisible()
-        assert button.width() // 2 < hint.x() and hint.geometry().right() < button.width()
-    hint = window.key_hints["eraser"]
+        assert button.width() // 2 < hint.x() and hint.geometry().right() < button.width() and hint.y() < button.height() // 2
+    hint = window.key_hints["compare"]
     hint.set_key("")
-    assert not hint.isVisible() and window.erase_button.styleSheet() == ""
+    assert not hint.isVisible() and window.compare_button.styleSheet() == ""
 
 
 def test_upscale_is_under_more_in_the_image_menu(window):

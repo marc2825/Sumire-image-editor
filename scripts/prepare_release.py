@@ -10,15 +10,25 @@ from sumire import DISPLAY_VERSION, __version__
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# The mark's colours (sumire.theme.BRAND) and squares (sumire.icons.MARK_SQUARES, in 64 units),
+# repeated here so the icon can be made without starting Qt.
+BRAND = {"ground": "#29233d", "light": "#b8a6f5", "mid": "#8e7dd3", "deep": "#6b5ca9"}
+MARK_SQUARES = ((14, 14, "light"), (34, 14, "mid"), (14, 34, "deep"), (34, 34, "light"))
+
+
+def write_icon(path):
+    icon = Image.new("RGBA", (256, 256), BRAND["ground"])
+    draw = ImageDraw.Draw(icon)
+    for x, y, color in MARK_SQUARES:
+        draw.rectangle((x * 4, y * 4, x * 4 + 63, y * 4 + 63), fill=BRAND[color])
+    icon.save(path, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+
+
 def prepare(root=ROOT):
     assets, build = root / "assets", root / "build"
     assets.mkdir(exist_ok=True)
     build.mkdir(exist_ok=True)
-    icon = Image.new("RGBA", (256, 256), "#25362e")
-    draw = ImageDraw.Draw(icon)
-    for x, y, color in ((56, 56, "#a8dfc2"), (136, 56, "#7da78f"), (56, 136, "#648873"), (136, 136, "#a8dfc2")):
-        draw.rectangle((x, y, x + 63, y + 63), fill=color)
-    icon.save(assets / "sumire.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    write_icon(assets / "sumire.ico")
     version = tuple(int(n) for n in __version__.split(".")) + (0,)
     (build / "sumire-version.txt").write_text(
         "VSVersionInfo(\n"
