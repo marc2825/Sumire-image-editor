@@ -54,6 +54,8 @@ COMMANDS = {
     "cut_files": (tr("画像ファイルを切り取る"), ("Ctrl+X",)),
     "paste_image": (tr("貼り付け（画像ファイルはタブのフォルダーへ、画像は新しく開く）"), ("Ctrl+V",)),
     "fullscreen": (tr("全画面表示"), ("F11",)),
+    "toggle_library": (tr("一覧の表示・非表示"), ("Ctrl+B",)),
+    "toggle_tools": (tr("道具の表示・非表示"), ("Ctrl+Shift+B",)),
 }
 CANVAS_COMMANDS = {"eraser", "text", "mask", "pan", "cancel_stroke"}
 HOST_COMMANDS = {"new_tab", "close_tab", "next_tab", "previous_tab"}
@@ -98,7 +100,8 @@ def load_bindings(preferences):
                 bindings[name] = normalize(raw[name])
             # Preserve valid assignments made before these commands existed.
             # Their new defaults yield to an explicit older assignment.
-            for name in ("copy_image", "cut_files", "paste_image", "fullscreen", "text", *QUICK_TAG_COMMANDS):
+            for name in ("copy_image", "cut_files", "paste_image", "fullscreen", "text", *QUICK_TAG_COMMANDS,
+                         "toggle_library", "toggle_tools"):
                 if name not in raw:
                     assigned = {key for other, keys in bindings.items() if other != name for key in keys}
                     bindings[name] = [key for key in bindings[name] if key not in assigned]

@@ -147,7 +147,28 @@ class KeyHint(QLabel):
         # With a selector, so the padding is not passed on to this label too.
         self.button.setStyleSheet("" if pixels is None else f"{self.button.metaObject().className()} {{ padding-right: {pixels}px; }}")
 
+    def corner(self):
+        """Where room is short the key sits small in the button's top right corner, like a keycap:
+        a tool with its name under its icon, or a button that asks for it (property keyCorner)."""
+        return bool(self.button.property("keyCorner")) or (
+            isinstance(self.button, QToolButton) and self.button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+
     def set_key(self, key: str):
+        under = isinstance(self.button, QToolButton) and self.button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonTextUnderIcon
+        if self.corner():
+            if self.padding is None and not under:
+                natural = self.button.sizeHint().width()
+                self.pad_right(0)
+                self.padding = natural - self.button.sizeHint().width()
+            self.key = key
+            self.setText(f"<u>{html_text(key)}</u>" if key else "")
+            self.adjustSize()
+            if not under:
+                # Room for the key after the text, without the brackets.
+                self.pad_right(self.padding + self.width() - 2 if key else None)
+            self.setVisible(bool(key))
+            self.place()
+            return
         if self.padding is None:
             # The button's own right padding from the style sheet, measured once it is in the window.
             natural = self.button.sizeHint().width()
@@ -170,6 +191,9 @@ class KeyHint(QLabel):
     def place(self):
         button = self.button
         if not self.key:
+            return
+        if self.corner():
+            self.move(button.width() - self.width() - 5, 3)
             return
         metrics = button.fontMetrics()
         label = metrics.horizontalAdvance(button.text())
@@ -203,6 +227,14 @@ def divider() -> QFrame:
     line = QFrame()
     line.setObjectName("divider")
     line.setFrameShape(QFrame.Shape.NoFrame)
+    return line
+
+
+def vertical_divider() -> QFrame:
+    line = QFrame()
+    line.setObjectName("vdivider")
+    line.setFrameShape(QFrame.Shape.NoFrame)
+    line.setFixedHeight(20)
     return line
 
 
@@ -346,7 +378,7 @@ class ValueLabel(QLabel):
         painter = QPainter(self)
         area = self.contentsRect()
         value_font = QFont(self.font())
-        value_font.setWeight(QFont.Weight.DemiBold)
+        value_font.setWeight(QFont.Weight.Bold)
         value_width = QFontMetrics(value_font).horizontalAdvance(self._value) + 2
         painter.setPen(self.palette().color(QPalette.ColorRole.WindowText))
         name = QFontMetrics(self.font()).elidedText(self._name, Qt.TextElideMode.ElideRight, max(0, area.width() - value_width - 8))
@@ -516,6 +548,7 @@ class WelcomePage(QWidget):
         super().__init__()
         self.setObjectName("welcome")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setAcceptDrops(True)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(32, 32, 32, 32)
@@ -533,6 +566,9 @@ class WelcomePage(QWidget):
         # The language, in each language's own words so it can be found from any of them.
         from .i18n import LANGUAGES
         languages = QHBoxLayout()
+        self.credit = QLabel(COPYRIGHT)
+        self.credit.setObjectName("faint")
+        languages.addWidget(self.credit, 0, Qt.AlignmentFlag.AlignBottom)
         languages.addStretch(1)
         self.language_note = QLabel()
         self.language_note.setObjectName("faint")

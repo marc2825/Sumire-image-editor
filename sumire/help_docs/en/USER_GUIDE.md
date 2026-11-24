@@ -20,7 +20,7 @@ At the first start, choose “Overwrite the original” or “Save to a separate
 Later, “Overwrite · auto-save ▾” at the top right changes these options:
 
 - Overwrite the original: turn it off to keep originals and save to a separate folder.
-- Keep the original temporarily before overwriting (on by default): “Restore original” above the image brings back the original from before the first overwrite. Kept originals are deleted when the app closes.
+- Keep the original temporarily before overwriting (on by default): “Restore original” at the foot of the right panel brings back the original from before the first overwrite. Kept originals are deleted when the app closes.
 - Auto-save: turn it off to save by hand with Ctrl+S.
 - Remove metadata when saving (off by default): turn it on to remove metadata on every save.
 - Keep removed metadata for restoring (on by default): keeps removed metadata so it can be restored later.
@@ -54,7 +54,7 @@ Press “Metadata: yes / none” above the image to see what it contains, by typ
 By default, metadata is kept when you save. To remove it:
 
 - The shown image: “Remove metadata” above the image
-- Every image in the tab: “Remove all metadata” above the list (the number of images and the save method are shown first)
+- Every image in the tab: “Export and batch → Remove metadata from all images…” below the list (the number of images and the save method are shown first)
 - Selected images: right-click in the list → “Remove metadata and save”
 - Every save: turn on “Remove metadata when saving”
 
@@ -64,27 +64,27 @@ See also [Metadata and restoring](METADATA.md).
 
 ### Labels and tags
 
-- Label images with “Accept”, “Hold” and “Reject” at the bottom right (keys 1, 2, 3). Alt+0 removes a label.
-- With “Next after labelling” (on by default), labelling moves on to the next image.
+- Label images with “Accept”, “Hold” and “Reject” below the image (keys 1, 2, 3). Alt+0 removes a label.
+- With “Then next” (on by default), labelling moves on to the next image.
 - Select several with Ctrl or Shift to label them together.
 - Right-click → “Tags…” adds free-form tags, separate from labels.
-- Tags you use often can be added and removed with the buttons in “Custom tags” above the labels (open it from its heading; “Needs fixing” at first; keys 4–9 from the top). “Edit” adds, renames, deletes and reorders them.
+- Tags you use often (custom tags) can be added and removed with the buttons to the right of the labels (“Needs fixing” at first; keys 4–9 from the left). The tag icon to their right adds, renames, deletes and reorders them.
 
 Labels never delete images.
 
 ### Label folders
 
-- Export by label (above the list): moves the images of the chosen labels into folders named after the labels, renumbered 00, 01…. With “Move the original files” off, the originals stay and the edited images are written without metadata.
+- Export by label (“Export and batch” below the list): moves the images of the chosen labels into folders named after the labels, renumbered 00, 01…. With “Move the original files” off, the originals stay and the edited images are written without metadata.
 - Sort automatically: turn on in right-click → “Label”, or Settings → Display and import → Sorting. Wherever Accept / Hold / Reject folders exist, a labelled image moves into its folder at once (hover over the option for the full rule).
 
 ### Organising the list
 
-- Reset sorting (above the list): removes all labels.
-- The arrow above the list (Ctrl+Alt+Z): undoes labels, tags, order, names, notes and moves.
+- Reset all sorting (“Export and batch” below the list): removes all labels.
+- “Undo organising” above the list (Ctrl+Alt+Z): undoes labels, tags, order, names, notes and moves.
 - Reorder: drag images in the list. The order can be changed with the button to the right of the search box.
 - Rename: double-click the image name, or F2 (Enter confirms, Esc cancels).
-- Numbering: the list's “⋯ → Renumber in order”, or right-click. Numbers follow the list order: 00, 01….
-- Remove duplicates: the list's “⋯ → Remove duplicates”. Keeps one of each identical image; the rest go to the Recycle Bin.
+- Numbering: “Export and batch → Renumber in order” below the list, or right-click. Numbers follow the list order: 00, 01….
+- Remove duplicates: “Export and batch → Remove duplicates” below the list. Keeps one of each identical image; the rest go to the Recycle Bin.
 - Remove from list: right-click. The file is not deleted; Ctrl+R (or ⟳ in the folder row) brings it back.
 - Delete images: right-click → “Delete images…”. The files go to the Recycle Bin (restore them from there).
 - Find: type part of a file name, note or tag in the search box. Change the number in “4 / 111” above the image and press Enter to go to that image.
@@ -111,15 +111,15 @@ It contains the unedited image, so do not share it with your finished images.
 
 ## Crop, rotate and colour
 
-- Crop: “Crop” below the image. Drag the corners or edges to set the area and drag inside to move it. You can also type numbers, and “Set the output size” enlarges or reduces the result.
-- Rotate and flip: the buttons in “More settings” in the right panel apply at once.
-- Colour: “Adjust colours” in the same place. “More adjustments” adds highlights, shadows, white / black level, RGB balance and sharpness.
+- Crop: “Crop and resize…” in “Adjust the image” in the right panel. Drag the corners or edges to set the area and drag inside to move it. You can also type numbers, and “Set the output size” enlarges or reduces the result.
+- Rotate and flip: the buttons in “Adjust the image” apply at once.
+- Colour: “Adjust colours…” in the same place. “More adjustments” adds highlights, shadows, white / black level, RGB balance and sharpness.
 
 All of these can be undone. When overwriting, Sumīre asks before cropping.
 
 ## Save as, convert, reduce size, upscale
 
-“⋯” to the right of the image name and the image's right-click menu hold the common actions.
+“⋯” above the image and the image's right-click menu hold the common actions.
 
 - Overwrite (Ctrl+S): saves with the current save method (it says “Save” when saving to a separate folder).
 - Save as: saves a new file with the name and format you choose.
@@ -127,7 +127,7 @@ All of these can be undone. When overwriting, Sumīre asks before cropping.
 - More → Upscale: enlarges 1.5–4×. Hidden areas are never recovered.
 - Restore the original from before overwriting: returns to the state before the first overwrite in this session.
 
-Converting and reducing file size are in the right-click menu (for the whole list, the list's “⋯”).
+Converting and reducing file size are in the right-click menu (for the whole list, “Export and batch” below the list).
 
 - The originals stay; new files go into a new folder.
 - Reducing size shows the result first, for example “Original 3.2 MB → Compressed 740 KB (77% smaller)”.
@@ -145,7 +145,7 @@ Pasted images are kept in `clipboard-images`, next to the settings (you can dele
 
 ## Hand images to NovelAI or other apps
 
-Use “Share” to the right of the image name.
+Use the Share button above the image.
 
 - Copy image / Drag to share: hand an image without metadata to a social site or a chat app.
 - NovelAI i2i: copies the image and opens NovelAI in your browser. Paste or drag it in, then choose “Image2Image”.

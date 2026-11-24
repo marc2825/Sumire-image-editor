@@ -64,11 +64,13 @@ def configure(app):
     app.setApplicationVersion(DISPLAY_VERSION)
     app.setStyle("Fusion")
     # A code-drawn icon keeps the entire distribution self-contained.
+    from .icons import MARK_SQUARES
+    from .theme import BRAND
     icon = QPixmap(64, 64)
-    icon.fill(QColor("#25362e"))
+    icon.fill(QColor(BRAND["ground"]))
     painter = QPainter(icon)
-    for x, y, color in [(14, 14, "#a8dfc2"), (34, 14, "#7da78f"), (14, 34, "#648873"), (34, 34, "#a8dfc2")]:
-        painter.fillRect(x, y, 16, 16, QColor(color))
+    for x, y, color in MARK_SQUARES:
+        painter.fillRect(x, y, 16, 16, QColor(BRAND[color]))
     painter.end()
     app.setWindowIcon(QIcon(icon))
     return translator, families

@@ -29,7 +29,7 @@ def test_default_review_keys_label_without_zooming(qtbot, window, key, label):
     assert page.document.path not in page.model.labels
     QTest.keyClick(page.canvas, Qt.Key.Key_1, Qt.KeyboardModifier.ControlModifier)
     assert page.canvas.scale == 1
-    assert page.review_hint.text() == "1 / 2 / 3"
+    assert [page.key_hints[label].key for label in ("accepted", "pending", "rejected")] == ["1", "2", "3"]
 
 
 def test_number_keys_are_text_in_search_and_rename(qtbot, window):
@@ -176,7 +176,7 @@ def test_empty_binding_disables_previous_key(qtbot, window):
     window._shortcuts()
     QTest.keyClick(window.canvas, Qt.Key.Key_1)
     assert not window.model.labels
-    assert "未設定" in window.review_hint.text()
+    assert not window.key_hints["accepted"].isVisible()
     assert "1" not in window.label_buttons["accepted"].toolTip()
 
 

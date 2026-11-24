@@ -440,7 +440,7 @@ def test_tool_notes_are_tooltips_and_saved_images_keep_the_drawing_hint(qtbot, p
     assert "保存済み" in window.save_state.text()
 
 
-def test_copyright_sits_in_the_bottom_bar_of_the_start_page(qtbot):
+def test_copyright_sits_at_the_foot_of_the_start_page(qtbot):
     window = Window()
     qtbot.addWidget(window)
     window.show()
@@ -448,7 +448,7 @@ def test_copyright_sits_in_the_bottom_bar_of_the_start_page(qtbot):
     window.update_controls()
     assert window.pages.currentWidget() is window.welcome
     assert window.credit.isVisible() and window.credit.text() == "© 2026 marc2825"
-    assert window.credit.parent().objectName() == "statusBar"
+    assert window.credit.parent() is window.welcome
 
 
 def test_help_section_headings_are_coloured_and_underlined(qtbot):

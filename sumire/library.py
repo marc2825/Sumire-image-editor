@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (QAbstractListModel, QEvent, QItemSelectionModel, QModelIndex, QPoint, QRectF, QSize, Qt, QThreadPool,
                             QSortFilterProxyModel, QMimeData, QTimer, Signal)
-from PySide6.QtGui import QColor, QCursor, QFont, QFontMetrics, QIcon, QPainter, QPen, QPixmap, QDrag
+from PySide6.QtGui import QColor, QCursor, QFont, QFontMetrics, QIcon, QPainter, QPainterPath, QPen, QPixmap, QDrag
 from PySide6.QtWidgets import QApplication, QListView, QAbstractItemView, QStyle, QStyledItemDelegate
 
 from .canvas import qimage
@@ -25,7 +25,9 @@ LABEL_ROLE = Qt.ItemDataRole.UserRole + 2
 NOTE_ROLE = Qt.ItemDataRole.UserRole + 3
 TAGS_ROLE = Qt.ItemDataRole.UserRole + 4
 LIST_ICON = QSize(64, 48)
-LABEL_TONES = {"accepted": ("ok", "accent_soft"), "pending": ("warn", "warn_soft"), "rejected": ("danger", "danger_soft")}
+LABEL_TONES = {"accepted": ("ok", "ok_soft"), "pending": ("warn", "warn_soft"), "rejected": ("danger", "danger_soft")}
+# The save state is told in words; its dot stays out of the label colours (only a failure is red).
+STATE_DOTS = {"ok": "text_muted", "neutral": "line_strong", "warn": "text_strong", "danger": "danger"}
 
 
 def filename_key(path: Path):
@@ -501,7 +503,7 @@ class LibraryDelegate(QStyledItemDelegate):
                            size.width(), size.height())
             self._thumbnail(painter, thumb, icon)
             painter.setPen(QPen(QColor(TOKENS["canvas"]), 1.5))
-            painter.setBrush(QColor(TOKENS[tone]))
+            painter.setBrush(QColor(TOKENS[STATE_DOTS[tone]]))
             painter.drawEllipse(QRectF(thumb.left() + 3, thumb.bottom() - 11, 8, 8))
             if label in REVIEW_LABELS:
                 painter.setBrush(QColor(TOKENS[LABEL_TONES[label][0]]))
@@ -517,9 +519,17 @@ class LibraryDelegate(QStyledItemDelegate):
             text_left, text_right = thumb.right() + 10, rect.right() - 8
             name_top = rect.top() + rect.height() / 2 - 19
         self._thumbnail(painter, thumb, icon)
+        if label in REVIEW_LABELS:
+            # The label also marks the thumbnail's corner, as it does the image above the list.
+            corner = QPainterPath(thumb.topLeft())
+            corner.lineTo(thumb.left() + 14, thumb.top())
+            corner.lineTo(thumb.left(), thumb.top() + 14)
+            corner.closeSubpath()
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.fillPath(corner, QColor(TOKENS[LABEL_TONES[label][0]]))
         font = QFont(option.font)
         font.setPixelSize(13)
-        font.setWeight(QFont.Weight.DemiBold if selected else QFont.Weight.Normal)
+        font.setWeight(QFont.Weight.Bold if selected else QFont.Weight.Normal)
         painter.setFont(font)
         metrics = QFontMetrics(font)
         width = int(text_right - text_left)
@@ -531,7 +541,7 @@ class LibraryDelegate(QStyledItemDelegate):
             painter.setPen(QColor(TOKENS["text_muted"]))
             painter.drawText(QRectF(text_right - 12, name_top, 12, 18), Qt.AlignmentFlag.AlignCenter, "✎")
         small = QFont(option.font)
-        small.setPixelSize(11)
+        small.setPixelSize(12)
         painter.setFont(small)
         small_metrics = QFontMetrics(small)
         line_top = name_top + 20
@@ -547,7 +557,7 @@ class LibraryDelegate(QStyledItemDelegate):
             painter.setPen(QColor(TOKENS[foreground]))
             painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, text)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(TOKENS[tone]))
+        painter.setBrush(QColor(TOKENS[STATE_DOTS[tone]]))
         painter.drawEllipse(QRectF(text_left, line_top + 5.5, 6, 6))
         painter.setPen(QColor(TOKENS["text_muted"]))
         available = int(width - pill_width - 16)

@@ -191,8 +191,9 @@ def test_moved_operations_remain_reachable_from_menus(window):
     library_actions = window.library_menu.actions()
     for action in (window.number_button, window.watch_action, window.workflow_actions["duplicates"]):
         assert action in library_actions
-    assert window.batch_delete_button.isVisible() and window.reset_labels_button.isVisible()
-    assert window.export_accepted_button.isVisible() and window.undo_organize_button.isVisible()
+    for action in (window.batch_button, window.workflow_actions["reset_labels"], window.workflow_actions["export_accepted"]):
+        assert action in library_actions
+    assert window.library_menu_button.isVisible() and window.undo_organize_button.isVisible()
     for action in (window.open_folder_action, window.open_files_action, window.app_actions["open_project"],
                    window.recent_menu.menuAction(), window.app_actions["save_project"]):
         assert action in window.file_menu.actions()

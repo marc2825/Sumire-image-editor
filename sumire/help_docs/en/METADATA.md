@@ -19,7 +19,7 @@ By default, metadata is kept when you save edits. To remove it, use one of these
 
 - The shown image: “Remove metadata” above the image
 - Selected images: right-click in the list → “Remove metadata and save”
-- Every image in the tab: “Remove all metadata” above the list
+- Every image in the tab: “Export and batch → Remove metadata from all images…” below the list
 - Every save: turn on “Remove metadata when saving” in the save method
 
 Removing takes out EXIF, XMP, PNG text, ICC profiles, C2PA and other extra information, as well as NovelAI's Stealth PNGInfo, and checks that none of it is left.
@@ -51,7 +51,7 @@ This is not a backup of the images. The original from before overwriting is kept
 ## Restore
 
 1. Show the image.
-2. Choose “⋯ → More → Save a copy with restored metadata” to the right of the image name.
+2. Choose “⋯ → More → Save a copy with restored metadata” above the image.
 3. Enter a new file name. You get a copy of the current result with the removed metadata attached.
 
 - Originals and existing files are never overwritten.

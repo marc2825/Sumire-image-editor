@@ -1,4 +1,4 @@
-Sumīre 1.5.0 / Windows 11 x64
+Sumīre 1.6.0 / Windows 11 x64
 
 Getting started
 Extract the whole ZIP and double-click sumire.exe. Python is not needed.
@@ -9,21 +9,21 @@ To switch the language, use the box at the bottom right of the start page, or op
 
 Basic use
 Trace over what you want to hide; it is saved automatically. Enter saves and moves to the next image; ← → move between images.
-The list is on the left, the image in the centre, and the editing tools and sorting (Accept / Hold / Reject, keys 1, 2, 3) on the right.
+The list is on the left, the image in the centre with sorting (Accept / Hold / Reject, keys 1, 2, 3) just below it, and the tools on the right. Ctrl+B and Ctrl+Shift+B fold the list and the tools.
 If you get stuck, open the help with “?” at the top right or F1 (it works offline).
 
 Main features
 - Tabs: Ctrl+T opens a new tab, Ctrl+W closes it. Double-click a tab to rename it.
 - Folders: open or create folders inside from the bar above the list. Drag images onto a folder to move them.
 - Right-click an image: Save as, Convert format, Reduce file size, Upscale, Compare, Make a collage, numbering, Tags, Remove from list, Delete images (to the Recycle Bin).
-- Crop, Compare and Mask are below the image; rotate, flip and colour are in “More settings” in the right panel.
+- Compare and Mask are below the image; crop, rotate, flip and colour are in “Adjust the image” in the right panel.
 - Text: choose “Text” (T) in the right panel and click the image to add text. Afterwards, move, rotate and resize it with its box, and double-click to rewrite.
 - ZIP: “File → Open ZIP…” or drag and drop shows and sorts the images in a ZIP without extracting it (read only; “Export from ZIP…” takes chosen images out).
-- Custom tags: tags you use often, such as “Needs fixing”, are added and removed with the buttons in “Custom tags” above the labels (keys 4–9).
+- Custom tags: tags you use often, such as “Needs fixing”, are added and removed with the buttons to the right of the labels below the image (keys 4–9).
 - Ctrl+C copies the result; Ctrl+V opens the clipboard image in a new tab. With the list focused, they cut, copy and paste the image files instead (Ctrl+X, Ctrl+C, Ctrl+V).
 
 Metadata
-By default, metadata is kept when saving. To remove it, use “Remove metadata” above the image or “Remove all metadata” above the list. It can also be removed on every save.
+By default, metadata is kept when saving. To remove it, use “Remove metadata” above the image or “Export and batch → Remove metadata from all images…” below the list. It can also be removed on every save.
 Press “Metadata: yes” above the image to see what it contains.
 Removed information can be restored with “⋯ → More → Save a copy with restored metadata”. It is not encrypted, so prompts and location data stay readable. It is kept in the app's own storage, not in the image folder (if you have used Sumīre since 0.4.0 or earlier, in .sumire-index.sqlite3 inside the image folder).
 “Metadata: none” is the result of checking the supported kinds. Information embedded in unknown ways cannot be checked.

@@ -16,39 +16,34 @@ def label_all(window):
     return first, second, third
 
 
-def test_whole_tab_buttons_form_a_grid_and_stack_when_narrow(qtbot, tabs, tmp_path, patterned):
+def test_whole_tab_work_is_one_button_at_the_foot_of_the_list(qtbot, tabs, tmp_path, patterned):
     page = open_page(qtbot, tabs, picture(tmp_path / "a.png", patterned))
-    def placed(wide):
-        export, delete, reset = (button.geometry() for button in page.library_action_buttons())
-        more = page.library_menu_button.mapTo(page.library_panel, page.library_menu_button.rect().center())
-        if wide:
-            # 採用を書き出す sits right above 仕分けをリセット; ⋯ moved to its left.
-            return (abs(export.left() - reset.left()) <= 2 and export.bottom() < reset.top()
-                    and abs(delete.center().y() - reset.center().y()) <= 2 and delete.right() < reset.left()
-                    and more.x() < page.export_accepted_button.mapTo(page.library_panel, export.topLeft() * 0).x())
-        return delete.bottom() < export.top() and export.bottom() < reset.top() and abs(delete.left() - reset.left()) <= 2
-    tabs.resize(1320, 850)
-    page.splitter.setSizes([380, 660, 280])
-    qtbot.waitUntil(lambda: placed(True))
-    tabs.resize(800, 600)
-    qtbot.waitUntil(lambda: placed(False))
-    panel = page.library_panel
-    assert panel.minimumWidth() <= 262 and panel.width() >= panel.minimumWidth()
-    assert all(button.isVisible() for button in page.library_action_buttons())
+    button, menu = page.library_menu_button, page.library_menu
+    assert button.menu() is menu and button.text() == "書き出しと一括処理"
+    actions = [action for action in menu.actions() if not action.isSeparator()]
+    for action in (page.workflow_actions["export_accepted"], page.batch_button, page.workflow_actions["reset_labels"],
+                   page.number_button, page.workflow_actions["duplicates"], page.workflow_actions["reset_list"]):
+        assert action in actions
+    # Exporting first, the resets (which ask first and can be undone) last.
+    assert actions.index(page.workflow_actions["export_accepted"]) < actions.index(page.workflow_actions["reset_labels"])
+    for size in ((1440, 900), (800, 600)):
+        tabs.resize(*size)
+        qtbot.waitUntil(lambda: button.isVisible() and button.geometry().top() > page.list.geometry().bottom())
+        assert button.geometry().right() < page.library_panel.width()
     # The right panel's content must fit without horizontal clipping.
     assert page.tools_scroll.widget().minimumSizeHint().width() <= page.tools_scroll.viewport().width()
 
 
 def test_reset_needs_labels(window):
-    assert not window.reset_labels_button.isEnabled()
+    assert not window.workflow_actions["reset_labels"].isEnabled()
     window.set_review_label("accepted")
-    assert window.reset_labels_button.isEnabled() and window.workflow_actions["reset_labels"].isEnabled()
+    assert window.workflow_actions["reset_labels"].isEnabled()
 
 
 def test_cancel_keeps_labels_and_dialog_defaults_to_cancel(qtbot, window):
     paths = label_all(window)
     observed = reply_to_confirmation()
-    window.reset_labels_button.click()
+    window.workflow_actions["reset_labels"].trigger()
     assert observed["title"] == "仕分けのリセットを確認" and "3 枚" in observed["text"]
     assert "不採用 1 枚" in observed["info"] and "採用 1 枚" in observed["info"]
     assert "選択・絞り込みに関係なく" in observed["info"] and "メモ" in observed["info"]
@@ -64,13 +59,13 @@ def test_reset_clears_every_label_keeps_notes_and_files_and_can_be_undone(qtbot,
     window.model.set_note(paths[0], "残すメモ")
     files = {path: path.read_bytes() for path in paths}
     reply_to_confirmation(QMessageBox.StandardButton.Ok)
-    window.reset_labels_button.click()
+    window.workflow_actions["reset_labels"].trigger()
     assert not any(window.model.labels.get(path) for path in paths)
     stored = ReviewLabels(folder)
     assert not any(stored.get(path) for path in paths) and stored.note(paths[0]) == "残すメモ"
     assert all(path.read_bytes() == files[path] for path in paths)
     assert "未判定 3" in window.review_summary.text() and "仕分けをリセットしました · 3枚" in window.status.text()
-    assert not window.reset_labels_button.isEnabled()
+    assert not window.workflow_actions["reset_labels"].isEnabled()
     window.undo_organization()
     assert [window.model.labels.get(path) for path in paths] == ["accepted", "pending", "rejected"]
     assert [ReviewLabels(folder).get(path) for path in paths] == ["accepted", "pending", "rejected"]
@@ -93,19 +88,20 @@ def test_reset_is_limited_to_this_tab(qtbot, tabs, tmp_path, patterned):
     second = open_page(qtbot, tabs, picture(tmp_path / "b" / "two.png", patterned).parent, mode="new")
     second.set_review_label("pending")
     reply_to_confirmation(QMessageBox.StandardButton.Ok)
-    second.reset_labels_button.click()
+    second.workflow_actions["reset_labels"].trigger()
     assert first.model.labels.get(first.document.path) == "accepted"
     assert ReviewLabels(tmp_path / "a").get(first.document.path) == "accepted"
 
 
-def test_crop_button_details_section_and_bottom_crop_icon(qtbot, window, monkeypatch):
-    assert not hasattr(window, "crop_button")
-    assert not hasattr(window, "upscale_button") and not hasattr(window, "image_tools")
-    assert window.details_toggle.text() == "詳細設定・その他" and window.tool_details.isHidden()
+def test_whole_image_changes_are_together_under_adjust_the_image(qtbot, window, monkeypatch):
+    assert not hasattr(window, "crop_button") and not hasattr(window, "image_tools") and not hasattr(window, "upscale_button")
+    assert window.details_toggle.text() == "画像の調整" and window.tool_details.isHidden()
     window.details_toggle.setChecked(True)
     assert not window.tool_details.isHidden() and window.color_button_adjust.isEnabled()
     assert [button.text() for button in window.transform_buttons] == ["右へ90°", "左へ90°", "左右反転", "上下反転"]
-    assert window.crop_tool in window.view_controls and window.crop_tool.isEnabled()
+    for button in (window.crop_tool, window.color_button_adjust, *window.transform_buttons):
+        assert window.tool_details.isAncestorOf(button) and button.isEnabled()
+    assert window.crop_tool not in window.view_controls
     menu_actions = window.image_menu.actions() + [action for menu in window.image_menu.findChildren(type(window.image_menu))
                                                   for action in menu.actions()]
     assert window.editor_actions["edit"] not in menu_actions and window.editor_actions["upscale"] in menu_actions

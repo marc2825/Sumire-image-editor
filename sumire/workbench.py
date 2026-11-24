@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QFile, QItemSelectionModel, QSize, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QComboBox, QDialog, QDialogButtonBox, QGridLayout,
+    QAbstractItemView, QApplication, QComboBox, QDialog, QDialogButtonBox,
     QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListView, QMenu,
     QMessageBox, QProgressBar, QPushButton, QSizePolicy, QSlider, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
@@ -45,7 +45,7 @@ AUTO_SORT_TIP = tr(
 def tint_combo(combo):
     """Show the chosen item's colour in the closed combo box as well."""
     color = combo.itemData(combo.currentIndex(), Qt.ItemDataRole.ForegroundRole)
-    combo.setStyleSheet(f"QComboBox {{ color: {color.name()}; font-weight: 600; }}" if isinstance(color, QColor) else "")
+    combo.setStyleSheet(f"QComboBox {{ color: {color.name()}; font-weight: 700; }}" if isinstance(color, QColor) else "")
 
 
 class Workbench:
@@ -71,7 +71,8 @@ class Workbench:
         self.search_timer.timeout.connect(self.apply_search)
 
     def build_library_panel(self):
-        """Left panel: search, filters, thumbnail list; bulk work lives in menus."""
+        """Left panel: finding images. The folder, search and filters, the list and its tally;
+        work on the whole list is behind one button at its foot."""
         self.model = LibraryModel(self)
         if self.workspace_host is not None:
             self.model.cacheChanged.connect(self.workspace_host.trim_memory)
@@ -93,44 +94,15 @@ class Workbench:
         self.count_label = section_label(tr("画像"))
         header.addWidget(self.count_label)
         header.addStretch(1)
-        self.undo_organize_button = tool_button("undo", tr("直前の整理操作を戻す"),
-                                                lambda: self.workflow_actions["undo_organize"].trigger())
+        # In words, so it is not mistaken for the image's own undo above the image.
+        self.undo_organize_button = QToolButton()
+        self.undo_organize_button.setText(tr("整理を戻す"))
+        self.undo_organize_button.setProperty("variant", "ghost")
+        self.undo_organize_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.undo_organize_button.clicked.connect(lambda *_args: self.workflow_actions["undo_organize"].trigger())
         self.undo_organize_button.setAccessibleName(tr("直前の整理操作を戻す"))
         header.addWidget(self.undo_organize_button)
-        self.library_menu_button = tool_button("more", tr("一覧の操作 · 連番・形式の変換・圧縮・重複の削除"))
-        self.library_menu_button.setAccessibleName(tr("一覧の操作"))
-        self.library_menu_button.setMenu(self.library_menu)
-        self.library_menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        header.addWidget(self.library_menu_button)
-        # Whole-tab actions form a 2×2 grid beside and under the count (採用の書き出しは
-        # 仕分けをリセットの真上) and stack in one column when the panel is narrow,
-        # so they never widen the left panel in 800px windows.
-        self.library_actions = QGridLayout()
-        self.library_actions.setHorizontalSpacing(6)
-        self.library_actions.setVerticalSpacing(6)
-        self.library_actions_wide = None
-        self.export_accepted_button = QToolButton()
-        self.export_accepted_button.setText(tr("ラベルごとに書き出す…"))
-        self.export_accepted_button.clicked.connect(lambda *_args: self.workflow_actions["export_accepted"].trigger())
-        self.export_accepted_button.setToolTip(tr("採用・保留・不採用の画像を、ラベルごとのフォルダーへ移動・書き出しします。実行前に確認します。"))
-        self.export_accepted_button.setAccessibleName(tr("ラベルごとに画像を書き出す"))
-        self.batch_delete_button = QToolButton()
-        self.batch_delete_button.setText(tr("メタデータ一括削除"))
-        self.batch_delete_button.clicked.connect(self.batch_button.trigger)
-        self.batch_delete_button.setToolTip(tr("絞り込みや選択にかかわらず、このタブの全画像が対象です。"))
-        self.batch_delete_button.setAccessibleName(tr("このタブの全画像のメタデータを一括削除"))
-        self.reset_labels_button = QToolButton()
-        self.reset_labels_button.setText(tr("仕分けをリセット"))
-        self.reset_labels_button.clicked.connect(lambda *_args: self.workflow_actions["reset_labels"].trigger())
-        self.reset_labels_button.setToolTip(tr("このタブの全画像の不採用・保留・採用を外し、未判定に戻します。画像・メモは変わりません。"))
-        self.reset_labels_button.setAccessibleName(tr("このタブの全画像の仕分けをリセット"))
-        self.export_accepted_button.setObjectName("acceptedExport")
-        for button in self.library_action_buttons():
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            button.setProperty("variant", "listAction")  # less side padding: two fit side by side
-            button.setMinimumWidth(button.sizeHint().width())
-        layout.addLayout(self.library_actions)
-        self.arrange_library_actions(True)
+        layout.addWidget(self.library_title)
         self.build_folder_bar(layout)
         panel.installEventFilter(self)
         search_row = QHBoxLayout()
@@ -197,6 +169,19 @@ class Workbench:
         self.review_summary = self._label("", "faint")
         layout.addWidget(self.review_summary)
         self.model.dataChanged.connect(self.update_summary)
+        # Work on the whole list, used between rounds of sorting: one button, its menu.
+        self.library_menu_button = QToolButton()
+        self.library_menu_button.setText(tr("書き出しと一括処理"))
+        self.library_menu_button.setIcon(icon("stack"))
+        self.library_menu_button.setIconSize(QSize(16, 16))
+        self.library_menu_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.library_menu_button.setToolTip(tr("ラベルごとの書き出し・全画像のメタデータ削除・連番・形式の変換・圧縮・重複の削除など"))
+        self.library_menu_button.setAccessibleName(tr("書き出しと一括処理"))
+        self.library_menu_button.setMenu(self.library_menu)
+        self.library_menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.library_menu_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.library_menu_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout.addWidget(self.library_menu_button)
         self.build_filter_popover()
         return panel
 
@@ -216,8 +201,8 @@ class Workbench:
         layout.addWidget(self.sort_combo)
         layout.addWidget(section_label(tr("ラベルで絞り込み")))
         self.filter_combo = QComboBox()
-        tones = {"all": "text", "unlabelled": "text_muted", "accepted": "accent", "pending": "warn", "rejected": "danger"}
-        for text, label in [(tr("すべてのラベル"), "all"), (tr("ラベルなし"), "unlabelled"), *[(text, label) for label, text in REVIEW_LABELS.items()]]:
+        tones = {"all": "text", "unlabelled": "text_muted", "accepted": "ok", "pending": "warn", "rejected": "danger"}
+        for text, label in [(tr("すべてのラベル"), "all"), (tr("未判定"), "unlabelled"), *[(text, label) for label, text in REVIEW_LABELS.items()]]:
             self.filter_combo.addItem(text, label)
             color = TOKENS[tones[label]]
             self.filter_combo.setItemData(self.filter_combo.count() - 1, QColor(color), Qt.ItemDataRole.ForegroundRole)
@@ -334,11 +319,13 @@ class Workbench:
         self.auto_sort_action.setToolTip(AUTO_SORT_TIP)
         self.label_menu.addSeparator()
         self.label_menu.addAction(self.auto_sort_action)
-        # Whole-tab work that has no button of its own (一括削除・リセット・採用の書き出し・
-        # 整理を戻す are buttons in the panel header).
+        # Work on the whole tab (the foot of the list): exporting first, undoable resets last.
+        self.workflow_actions["reset_labels"].setText(tr("仕分けをすべてリセット…"))
         menu = self.library_menu
-        for item in (self.workflow_actions["export_archive"], self.number_button, None, self.workflow_actions["convert_all"], self.workflow_actions["compress_all"],
-                     None, self.workflow_actions["merge_labels"], self.workflow_actions["duplicates"], self.workflow_actions["reset_list"], None, self.watch_action):
+        for item in (self.workflow_actions["export_accepted"], self.batch_button, self.workflow_actions["export_archive"], None,
+                     self.number_button, self.workflow_actions["convert_all"], self.workflow_actions["compress_all"], None,
+                     self.workflow_actions["merge_labels"], self.workflow_actions["duplicates"], None,
+                     self.workflow_actions["reset_labels"], self.workflow_actions["reset_list"], None, self.watch_action):
             menu.addSeparator() if item is None else menu.addAction(item)
 
     def populate_selection_menu(self, menu):
@@ -518,14 +505,6 @@ class Workbench:
 
     def update_workbench_controls(self):
         ready = bool(self.model.paths) and not self.busy() and not self.saving
-        widths = []
-        for button in self.library_action_buttons():
-            button.ensurePolished()
-            button.setMinimumWidth(button.sizeHint().width())
-            widths.append(button.sizeHint().width())
-        # Stacked, the actions need only the widest button.
-        self.library_panel.setMinimumWidth(max(208, self.library_header.minimumSize().width() + 24, max(widths) + 24))
-        self.update_library_actions_layout()
         self.list.setEditTriggers((QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed)
                                   if ready and self.archive is None else QAbstractItemView.EditTrigger.NoEditTriggers)
         selected = self.selected_paths()
@@ -539,9 +518,7 @@ class Workbench:
         self.undo_organize_button.setToolTip(tr("直前の整理操作を戻す（仕分け・並べ替え・名前・メモ）") + (" · " + key if key else ""))
         labelled = ready and any(self.model.labels.get(path) for path in self.model.paths)
         self.workflow_actions["reset_labels"].setEnabled(labelled)
-        self.reset_labels_button.setEnabled(labelled)
         self.workflow_actions["export_accepted"].setEnabled(labelled)
-        self.export_accepted_button.setEnabled(labelled)
         for key in ("duplicates", "compare", "convert_all", "compress_all"):
             self.workflow_actions[key].setEnabled(ready)
         self.workflow_actions["merge_labels"].setEnabled(not self.busy() and not self.saving and self.browsed_folder() is not None)
@@ -706,34 +683,6 @@ class Workbench:
             return {}
         targets = {path: label_folder_target(path, label) for path in paths}
         return {path: folder for path, folder in targets.items() if folder is not None}
-
-    def library_action_buttons(self):
-        return (self.export_accepted_button, self.batch_delete_button, self.reset_labels_button)
-
-    def arrange_library_actions(self, wide):
-        """2×2 beside the count when there is room; one column when the panel is narrow."""
-        if wide == self.library_actions_wide:
-            return
-        self.library_actions_wide = wide
-        grid = self.library_actions
-        for widget in (self.library_title, *self.library_action_buttons()):
-            grid.removeWidget(widget)
-        if wide:
-            grid.addWidget(self.library_title, 0, 0)
-            grid.addWidget(self.export_accepted_button, 0, 1)
-            grid.addWidget(self.batch_delete_button, 1, 0)
-            grid.addWidget(self.reset_labels_button, 1, 1)
-            grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 1)
-        else:
-            for row, widget in enumerate((self.library_title, self.batch_delete_button, self.export_accepted_button, self.reset_labels_button)):
-                grid.addWidget(widget, row, 0, 1, 2)
-
-    def update_library_actions_layout(self, width=None):
-        width = self.library_panel.width() if width is None else width
-        left = max(self.library_title.minimumSizeHint().width(), self.batch_delete_button.sizeHint().width())
-        right = max(self.export_accepted_button.sizeHint().width(), self.reset_labels_button.sizeHint().width())
-        self.arrange_library_actions(width >= left + right + self.library_actions.horizontalSpacing() + 24)
 
     def selected_or_current(self):
         return self.selected_paths() or ([self.document.path] if self.document else [])
@@ -937,7 +886,7 @@ class Workbench:
         if changed:
             self.write_tags(changed, {path: current[path] for path in changed})
 
-    # --- オリジナルタグ: tags the user keeps as buttons below the labels ---------------------------
+    # --- オリジナルタグ: tags the user keeps as buttons beside the labels ---------------------------
 
     def build_quick_tag_buttons(self):
         for button in self.quick_tag_buttons:
@@ -948,15 +897,15 @@ class Workbench:
             button = QPushButton()
             button.setObjectName("toggle")
             button.setCheckable(True)
+            button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
             button.setProperty("tag", tag)
             button.setAccessibleName(tag)
-            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-            button.setText(button.fontMetrics().elidedText(tag, Qt.TextElideMode.ElideRight, 80))
+            button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+            button.setText(button.fontMetrics().elidedText(tag, Qt.TextElideMode.ElideRight, 96))
             button.clicked.connect(lambda checked=False, index=number: self.press_quick_tag(index))
-            self.quick_tag_grid.addWidget(button, *divmod(number, 3))
+            self.quick_tag_grid.addWidget(button)
             self.quick_tag_buttons.append(button)
-        for column in range(3):
-            self.quick_tag_grid.setColumnStretch(column, 1)
+        self.quick_tag_panel.setVisible(bool(self.quick_tag_buttons))
         if hasattr(self, "bindings"):
             self.update_quick_tag_hints()
 
@@ -1364,7 +1313,9 @@ class Workbench:
             "inverse_selection": self.inverse_action.isChecked(),
             "navigator": self.navigator_action.isChecked(),
             "text": self.text_style.to_settings(),
-            "quick_tags_open": self.quick_tag_toggle.isChecked(),
+            # A panel folded only because the window was narrow is still one the user shows.
+            "show_library": not self.library_panel.isHidden() or "library" in self.auto_folded,
+            "show_tools": not self.tools_panel.isHidden() or "tools" in self.auto_folded,
         }
 
     def workspace_state(self, *, session=False):
@@ -1422,9 +1373,12 @@ class Workbench:
                             (self.watch_action, "watch"), (self.novelai_adjust, "novelai_adjust"), (self.novelai_metadata, "novelai_metadata"), (self.mask_toggle, "show_mask"),
                             (self.metadata_backup, "metadata_backup"), (self.inverse_action, "inverse_selection"),
                             (self.strip_metadata, "strip_metadata"), (self.keep_originals, "keep_originals"),
-                            (self.navigator_action, "navigator"), (self.quick_tag_toggle, "quick_tags_open")]:
+                            (self.navigator_action, "navigator")]:
             if isinstance(data.get(key), bool):
                 widget.setChecked(data[key])
+        for which, key in (("library", "show_library"), ("tools", "show_tools")):
+            if isinstance(data.get(key), bool):
+                self.set_panel_shown(which, data[key])
         if isinstance(data.get("brush"), int):
             self.brush.setValue(data["brush"])
         mode = data.get("mode", "mosaic")

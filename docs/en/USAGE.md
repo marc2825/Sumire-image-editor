@@ -5,11 +5,15 @@ Every feature in detail. To get going quickly, read the in-app help (F1) or [Get
 ## The window
 
 - Top: “Sumīre”, “File” and the tabs. On the right, the save method (“Overwrite · auto-save ▾”), help and the gear (settings)
-- Left: list actions (export by label, bulk removal, reset sorting, undo organising, “⋯”), the folder bar, the search box and the images
-- Centre: the image. Above it, undo / redo, the save state, whether there is metadata, “Remove metadata” and “Overwrite and next →”; below it, crop, compare and mask
-- Right of the image name: “Share” (NovelAI i2i, Copy image, Drag to share) and “⋯” (overwrite, save as, metadata, upscale, restore the original from before overwriting and more)
-- Right: editing tools, “More settings” (presets, area expansion, rotate, flip, colour), sorting
-- Bottom: status messages, zoom (you can type a number), Fit, 100%
+- Left: “Undo organising”, the folder bar, the search box and the filter button, the images, the label tally and “Export and batch” (export by label, remove metadata from all images, numbering, converting, reducing size, removing duplicates, resetting sorting and more)
+- Centre: the image, with a bar above and below it
+- Above the image: show or hide the list, ← →, the image name, “4 / 111”, undo / redo, the save state, whether there is metadata, “Remove metadata”, Share (NovelAI i2i, Copy image, Drag to share), “⋯” (overwrite, save as, metadata, upscale, restore the original from before overwriting and more), “Overwrite and next”, show or hide the tools
+- Below the image: “Accept”, “Hold”, “Reject”, “Then next”, the custom tags, “Compare”, “Mask”, the image size, zoom (you can type a number), Fit to window, “100%”
+- Right: “Tools” (Mosaic, Blur, Fill, Eraser, Text), “Shape”, brush diameter and strength, area expansion, edit presets, “Adjust the image” (crop, rotate, flip, colour). At the foot, “Reset edits and mask”, and “Restore original” while originals are overwritten and kept
+
+The buttons at both ends of the bar above the image, or Ctrl+B (list) / Ctrl+Shift+B (tools), fold the list and the tools away. A narrow window folds them automatically.
+
+Results and errors appear for a moment at the foot of the image (errors stay until you close them).
 
 The save state is one of “Unedited”, “Unsaved”, “Saving…”, “Saved” or “Save failed”. Press “Metadata: yes / none” to see the metadata.
 
@@ -20,7 +24,7 @@ Each image in the list shows its edit and save state, label, tags and whether it
 - Folders: lists the images directly inside, in natural name order (1, 2, 10).
 - Images: lists only the chosen images (other images in the same folder are not added).
 - While working, you can add what you open to the current tab or open it in a new tab.
-- The list's “⋯ → Pick up images added to the folder” (on by default): images newly placed in the open folder are added once they have been written completely.
+- “Export and batch → Pick up images added to the folder” below the list (on by default): images newly placed in the open folder are added once they have been written completely.
 - The ✕ next to a recent folder on the start page removes it from the list (the folder is not deleted).
 
 ### Moving around inside a folder
@@ -49,7 +53,7 @@ Drag images from the list onto a folder in the bar, or right-click → “Move t
 - Move between the ZIP's folders with the bar above the list. A ZIP whose images are all in one folder starts inside it.
 - A ZIP is read only: no editing, saving, renaming, moving, deleting or metadata removal, and the ZIP itself is never changed (viewing the metadata works).
 - Accept / Hold / Reject labels, tags and notes can be given. They are kept in the records of the ZIP's folder, not in the ZIP. If the ZIP is moved or renamed, or an image in it changes, that image's label is not carried over.
-- “Export from ZIP…” (right-click or the list's “⋯”) writes the chosen images, exactly as stored, to a folder. You can keep the ZIP's folder structure; a file of the same name is never overwritten (`_2` and so on is added).
+- “Export from ZIP…” (right-click or “Export and batch” below the list) writes the chosen images, exactly as stored, to a folder. You can keep the ZIP's folder structure; a file of the same name is never overwritten (`_2` and so on is added).
 - If the ZIP is changed or deleted after it was opened, its images are not read and you are told so. Ctrl+R opens it again.
 - Items with unsafe names (such as ones containing `..`), duplicate names, encryption, links, unsupported compression, more than 256 MiB after decompression or an extreme compression ratio are left out of the list, and their number is shown.
 
@@ -97,7 +101,7 @@ How saving works and what is checked is described in [Saving and privacy](SAVING
 
 ### Choosing the area
 
-- Shapes: Brush, Rectangle, Ellipse, Polygon, Lasso. Hover over the list to see how each works.
+- Shapes: Brush, Rectangle, Ellipse, Polygon, Lasso. Choose one with the five buttons under “Shape”; hover over a button to see how it works.
 - Polygon: click to add points; Enter or double-click finishes. Backspace removes the last point, Esc cancels.
 - Lasso: drag around an area. The first closed region formed where the line crosses itself is edited (nothing happens if it never crosses).
 - Apply outside: turn on “⋯ → More → Invert selection” to edit outside the next enclosed area (not for the brush).
@@ -110,7 +114,7 @@ How saving works and what is checked is described in [Saving and privacy](SAVING
 - Hold “Compare” or Tab: show the original
 - “Mask” (M): tints the edited areas blue (the tint is not saved)
 - “Reset edits and mask”: removes all edits. Ctrl+Z undoes it.
-- Edit presets: save the tool, size, strength, colour, shape and area expansion under a name (in “More settings”).
+- Edit presets: save the tool, size, strength, colour, shape and area expansion under a name (in the right panel, under the sliders).
 
 ### Text
 
@@ -137,9 +141,9 @@ Edited areas (the mask) are kept in the records and come back when the image is 
 
 ## Crop, rotate, colour and upscale
 
-- Crop: “Crop” below the image. Drag the corners or edges to make the frame smaller and drag inside to move it. You can also type numbers, and “Set the output size” enlarges or reduces the result.
-- Rotate and flip: the buttons in “More settings” apply at once.
-- Colour: “Adjust colours” in “More settings”. Brightness, contrast, saturation, hue, exposure, temperature and gamma, plus highlights, shadows, white / black level, RGB balance and sharpness under “More adjustments”. Double-click a slider to reset it.
+- Crop: “Crop and resize…” in “Adjust the image” in the right panel. Drag the corners or edges to make the frame smaller and drag inside to move it. You can also type numbers, and “Set the output size” enlarges or reduces the result.
+- Rotate and flip: the buttons in “Adjust the image” apply at once.
+- Colour: “Adjust colours…” in “Adjust the image”. Brightness, contrast, saturation, hue, exposure, temperature and gamma, plus highlights, shadows, white / black level, RGB balance and sharpness under “More adjustments”. Double-click a slider to reset it.
 - Upscale: “⋯ → More → Upscale”. Enlarges 1.5–4× (up to 32,768 px per side and 24 million pixels). Hidden areas are never recovered.
 
 All of these change the image and the mask together, and Undo reverts them. When overwriting, Sumīre asks before cropping or upscaling. After overwriting and quitting, cropped-off parts cannot be brought back.
@@ -148,10 +152,10 @@ All of these change the image and the mask together, and Undo reverts them. When
 
 ### Labels
 
-- Label images with “Accept”, “Hold” and “Reject” at the bottom right (1, 2, 3). Pressing again keeps the label; Alt+0 removes it.
+- Label images with “Accept”, “Hold” and “Reject” below the image (1, 2, 3). Pressing again keeps the label; Alt+0 removes it.
 - With several images selected, all are labelled (Ctrl+click adds or removes one, Shift+click selects a range).
-- With “Next after labelling” (on by default), Sumīre moves to the next image after each label.
-- The filter button shows images by label. “Reset sorting” removes every label in the tab.
+- With “Then next” (on by default), Sumīre moves to the next image after each label.
+- The filter button shows images by label. “Export and batch → Reset all sorting…” removes every label in the tab.
 
 Labels are saved at once and survive restarts, renaming and moving. They never change the image.
 
@@ -163,11 +167,11 @@ Labels are saved at once and survive restarts, renaming and moving. They never c
 
 ### Custom tags
 
-Tags you use often can be shown as buttons in “Custom tags” in the sorting area. The first one is “Needs fixing”. It sits above the Accept / Hold / Reject labels; press its heading to open or close it (it starts closed).
+Tags you use often can be shown as custom tag buttons. The first one is “Needs fixing”. They sit below the image, to the right of the Accept / Hold / Reject labels and “Then next”.
 
 - Pressing a button adds its tag to the shown (or selected) images; when they all have it, it is removed.
-- The keys 4–9 do the same, from the top (change them in the shortcut settings).
-- “Edit” adds, renames, deletes and reorders them (up to 9). Renaming also renames the same tag on the images in this tab (this can be turned off).
+- The keys 4–9 do the same, from the left (change them in the shortcut settings).
+- The tag icon to their right adds, renames, deletes and reorders them (up to 9). Renaming also renames the same tag on the images in this tab (this can be turned off).
 - Deleting only removes the button; tags already on images stay.
 - “Undo the last organising step” undoes adding and removing. The buttons are the same in every tab.
 
@@ -175,13 +179,13 @@ Tags you use often can be shown as buttons in “Custom tags” in the sorting a
 
 - Sort automatically: turn on in right-click → “Label”, or Settings → Display and import → Sorting. Wherever Accept / Hold / Reject folders exist, a labelled image moves into its folder at once (Accept inside “Hold” moves it to the “Accept” beside it).
 - Export by label: moves the images of the chosen labels into folders named after the labels, renumbered 00, 01…. With “Move the original files” off, the originals stay and the edited images are written without metadata. The destination, numbering and format can be changed.
-- Gather the label folders: from the list's “⋯”. Collects the images of the Accept / Hold / Reject folders into one folder; emptied folders can be removed.
+- Gather the label folders: from “Export and batch” below the list. Collects the images of the Accept / Hold / Reject folders into one folder; emptied folders can be removed.
 
 Labels, notes and tags move with the images, and “Undo the last organising step” moves them back. Save unsaved edits before moving originals.
 
 ### Resetting the whole list
 
-The list's “⋯ → Reset the whole list” resets:
+“Export and batch → Reset the whole list” below the list resets:
 
 - images overwritten in this session whose originals were kept
 - the shown image's edits and mask
@@ -194,14 +198,14 @@ Edits saved before this session, and overwrites without a kept original, cannot 
 - Search (Ctrl+F): part of a file name, note or tag.
 - Order: by name or by modification time. Dragging images switches to a manual order; the list scrolls near its edges.
 - Rename: double-click the image name, or F2. The extension does not change.
-- Numbering: the list's “⋯ → Renumber in order” or right-click. Numbers start at 0 in list order, with one more digit than the largest number (00–02 for 3 images).
+- Numbering: “Export and batch → Renumber in order” below the list, or right-click. Numbers start at 0 in list order, with one more digit than the largest number (00–02 for 3 images).
 - Notes: right-click → “Note” (up to 4,000 characters). Hover over an image in the list to read it.
 - Remove from list: right-click. The file is not deleted; Ctrl+R brings it back.
 - Delete images: right-click → “Delete images…”. The files go to the Recycle Bin.
-- Remove duplicates: the list's “⋯ → Remove duplicates”. Keeps one image of each identical group; the rest go to the Recycle Bin.
+- Remove duplicates: “Export and batch → Remove duplicates” below the list. Keeps one image of each identical group; the rest go to the Recycle Bin.
 - Compare: select 2–6 images, right-click → “Compare side by side”. “Link zoom and position” keeps the views together.
 
-The arrow above the list (“Undo the last organising step”, Ctrl+Alt+Z) undoes labels, tags, order, names, notes and moves, newest first.
+“Undo organising” above the list (“Undo the last organising step”, Ctrl+Alt+Z) undoes labels, tags, order, names, notes and moves, newest first.
 
 Renaming never rewrites the image.
 
@@ -212,8 +216,8 @@ Renaming never rewrites the image.
 ## Exporting
 
 - Save as: “⋯” or right-click. Saves a new file with the name and format you choose.
-- Convert format: right-click or the list's “⋯”. To PNG, JPEG, WebP, AVIF, BMP, TIFF or GIF.
-- Reduce file size: right-click or the list's “⋯”. Makes files smaller.
+- Convert format: right-click or “Export and batch” below the list. To PNG, JPEG, WebP, AVIF, BMP, TIFF or GIF.
+- Reduce file size: right-click or “Export and batch” below the list. Makes files smaller.
 - Make a collage: select images, right-click → “Make a collage”.
 
 Converting and reducing size never change the originals; they write into a “Converted” or “Compressed” folder (the destination can be changed). Files with the same name are never overwritten.
@@ -253,7 +257,7 @@ It also contains what you hid, before editing, so share images made with a norma
 
 ## Sharing
 
-“Share” to the right of the image name hands over the edited image (unsaved edits included).
+The Share button above the image hands over the edited image (unsaved edits included).
 
 - Copy image: paste it into a post or a chat.
 - Drag to share: drag the image from the small window into a browser or a chat app.
